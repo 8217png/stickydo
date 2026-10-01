@@ -8,11 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <script>
-      // 在首帧渲染前确定主题，避免闪烁
+      // 在首帧渲染前应用显式选择的主题，避免闪烁；“跟随系统”由 CSS 媒体查询处理
       try {
         var t = JSON.parse(localStorage.getItem('stickydo.theme') || '"system"')
-        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-        document.documentElement.dataset.theme = t
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
       } catch (e) {}
     </script>
   </head>

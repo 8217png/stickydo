@@ -1,7 +1,7 @@
 /*
  * 设计 token（docs/frontend-design.md §5）
  * 颜色、阴影、圆角、间距、字体、动效时长统一定义在这里，再映射到 Tailwind 主题。
- * 主题由 <html data-theme="light|dark"> 决定（"跟随系统"在 JS 中解析）。
+ * 主题：<html data-theme="light|dark"> 表示显式选择；没有该属性时跟随系统（prefers-color-scheme）。
  */
 :root {
   /* 界面 */
@@ -54,7 +54,9 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* 暗色：显式选择暗色时生效；“跟随系统”时由下方媒体查询生效（两处色值保持一致） */
 [data-theme='dark'] {
+  color-scheme: dark;
   --board-bg: #1c1b19;
   --board-dot: rgb(255 248 230 / 0.06);
   --ink: #ece7dc;
@@ -86,4 +88,41 @@
     0 2px 3px rgb(0 0 0 / 0.3), 0 14px 28px -8px rgb(0 0 0 / 0.55),
     0 30px 60px -16px rgb(0 0 0 / 0.5);
   --shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --board-bg: #1c1b19;
+    --board-dot: rgb(255 248 230 / 0.06);
+    --ink: #ece7dc;
+    --ink-muted: #9b958a;
+    --ink-faint: #6d685f;
+    --chrome-bg: rgb(40 38 35 / 0.75);
+    --chrome-border: rgb(255 248 230 / 0.08);
+    --chrome-hover: rgb(255 248 230 / 0.07);
+    --focus-ring: #8aa2ff;
+    --overdue: #e6a066;
+
+    /* 便利贴：暗色（降低饱和度的深色调，单独设计，不是反色）——M0 初稿 */
+    --note-lemon: #4a4329;
+    --note-peach: #4d372b;
+    --note-blossom: #4a3039;
+    --note-lavender: #3a3450;
+    --note-sky: #2a3d4f;
+    --note-mint: #284339;
+    --note-sand: #443b30;
+    --note-paper: #3a3936;
+    --note-ink: #efe9dc;
+    --note-ink-muted: rgb(239 233 220 / 0.55);
+    --note-noise-opacity: 0.18;
+    --note-noise-blend: soft-light;
+
+    --shadow-note:
+      0 1px 1px rgb(0 0 0 / 0.3), 0 2px 4px rgb(0 0 0 / 0.25), 0 8px 16px -6px rgb(0 0 0 / 0.45);
+    --shadow-note-lift:
+      0 2px 3px rgb(0 0 0 / 0.3), 0 14px 28px -8px rgb(0 0 0 / 0.55),
+      0 30px 60px -16px rgb(0 0 0 / 0.5);
+    --shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+  }
 }

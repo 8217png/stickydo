@@ -7,6 +7,10 @@ import { Whiteboard } from './features/notes/Whiteboard'
 import { useBoardShortcuts } from './features/notes/useBoardShortcuts'
 import { useSettings } from './features/settings'
 
+// 嵌入时宿主页面在根元素上设置的主题（我们自己的显式选择不算）
+const initialTheme =
+  useSettings.getState().theme === 'system' ? document.documentElement.dataset.theme : undefined
+
 function useResolvedTheme() {
   const pref = useSettings((s) => s.theme)
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
@@ -16,10 +20,15 @@ function useResolvedTheme() {
     mq.addEventListener('change', on)
     return () => mq.removeEventListener('change', on)
   }, [])
-  const theme = pref === 'system' ? (systemDark ? 'dark' : 'light') : pref
+  const systemTheme = initialTheme === 'light' || initialTheme === 'dark' ? initialTheme : systemDark ? 'dark' : 'light'
+  const theme = pref === 'system' ? systemTheme : pref
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-  }, [theme])
+    // 跟随系统时不写死属性，交给 CSS 的 prefers-color-scheme
+    const root = document.documentElement
+    if (pref !== 'system') root.dataset.theme = pref
+    else if (initialTheme === 'light' || initialTheme === 'dark') root.dataset.theme = initialTheme
+    else delete root.dataset.theme
+  }, [pref])
   return theme
 }
 

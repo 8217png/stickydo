@@ -16,7 +16,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
       <div className="pointer-events-auto flex items-center gap-2 rounded-ui border border-chrome-border bg-chrome px-3 py-1.5 shadow-chrome backdrop-blur-md">
         <Logo />
         <span className="text-[14px] font-semibold tracking-tight">Sticky-Do</span>
-        <span className="ml-1 rounded-full bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint">M0</span>
+        <span className="ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint">M0</span>
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
