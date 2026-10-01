@@ -6,6 +6,9 @@ import { TopBar } from './components/TopBar'
 import { Whiteboard } from './features/notes/Whiteboard'
 import { useBoardShortcuts } from './features/notes/useBoardShortcuts'
 import { useSettings } from './features/settings'
+import { PopupResizeGrip } from './extension/PopupResizeGrip'
+import { trackStandaloneWindowBounds } from './extension/standaloneWindow'
+import { surface } from './extension/surface'
 
 // 嵌入时宿主页面在根元素上设置的主题（我们自己的显式选择不算）
 const initialTheme =
@@ -44,6 +47,9 @@ export default function App() {
     return true
   }, [])
   useBoardShortcuts({ toggleHelp, closeOverlays })
+  useEffect(() => {
+    if (surface === 'ext-window') void trackStandaloneWindowBounds()
+  }, [])
 
   return (
     // 遵循系统的“减少动态效果”设置
@@ -52,6 +58,7 @@ export default function App() {
         <TopBar onHelp={toggleHelp} />
         <Whiteboard />
         <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+        {surface === 'ext-popup' && <PopupResizeGrip />}
         <Toaster
           theme={theme}
           position="bottom-center"

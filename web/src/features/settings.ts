@@ -31,3 +31,17 @@ export const useSettings = create<SettingsState>()((set) => ({
     set({ noteSize })
   },
 }))
+
+// 其他页面改了设置（主题、倾斜、全局尺寸）时同步过来
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (!e.key?.startsWith('stickydo.') || e.newValue == null) return
+    const field = ({ 'stickydo.theme': 'theme', 'stickydo.tilt': 'tilt', 'stickydo.noteSize': 'noteSize' } as const)[e.key]
+    if (!field) return
+    try {
+      useSettings.setState({ [field]: JSON.parse(e.newValue) })
+    } catch {
+      /* ignore */
+    }
+  })
+}

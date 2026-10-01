@@ -24,6 +24,15 @@ body,
   height: 100%;
 }
 
+/* Chrome 插件浮窗：浮窗大小由页面尺寸决定，用变量控制并记住（见 extension/popupSize.ts） */
+html.ext-popup {
+  height: auto;
+}
+html.ext-popup body {
+  width: var(--popup-w, 480px);
+  height: var(--popup-h, 560px);
+}
+
 body {
   margin: 0;
   background: var(--board-bg);

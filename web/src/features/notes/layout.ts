@@ -1,7 +1,7 @@
 import type { Note } from './store'
 
-/** 网格排列参数：间距留出倾斜和阴影的空间，顶部避开顶栏 */
-export const GRID = { gap: 28, top: 84, side: 32, bottom: 48 }
+/** 网格排列参数：间距留出倾斜和阴影的空间，顶部避开顶栏（含第一行便利贴悬停时上方的操作栏） */
+export const GRID = { gap: 28, top: 104, side: 32, bottom: 48 }
 
 /** 按阅读顺序（先上后下、先左后右）排列，用于 J/K 切换焦点和自动排列 */
 export const readingOrder = (notes: Note[]) =>

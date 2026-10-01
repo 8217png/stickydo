@@ -3,6 +3,9 @@ import type { NoteColor } from '../../design/colors'
 import { uuidv7 } from '../../lib/id'
 import { load, save } from '../../lib/storage'
 import { type NoteSizeKey, useSettings } from '../settings'
+import { currentPopupSize } from '../../extension/popupSize'
+import { surface } from '../../extension/surface'
+import { gridLayout } from './layout'
 
 export interface Note {
   id: string
@@ -37,13 +40,25 @@ const STORAGE_KEY = 'stickydo.m0.notes'
 const randomTilt = () => Math.round((Math.random() * 3 - 1.5) * 10) / 10
 
 function sampleNotes(): Note[] {
+  const notes = baseSampleNotes()
+  // 窄屏（插件浮窗、手机）上，示例便利贴按网格排好，不要跑出可见范围
+  const width = surface === 'ext-popup' ? currentPopupSize().w : window.innerWidth
+  if (width >= 760) return notes
+  const pos = gridLayout(notes, NOTE_SIZES[1], width)
+  return notes.map((n) => ({ ...n, ...pos.get(n.id) }))
+}
+
+function baseSampleNotes(): Note[] {
   const now = Date.now()
   const base = { w: 220, h: 200, createdAt: now }
   return [
     {
       ...base,
       id: uuidv7(),
-      content: '欢迎来到 Sticky-Do 👋\n双击空白处，就能贴上一张新便利贴。',
+      content:
+        surface === 'ext-popup'
+          ? '欢迎来到 Sticky-Do 👋\n双击空白处，就能贴上一张新便利贴。拖左下角可以调整浮窗大小，右上角可以在独立窗口打开。'
+          : '欢迎来到 Sticky-Do 👋\n双击空白处，就能贴上一张新便利贴。',
       color: 'lemon',
       x: 120,
       y: 110,
@@ -226,6 +241,29 @@ useNotes.subscribe((s) => {
   lastSaved = s.notes
   save(STORAGE_KEY, s.notes)
 })
+
+// 多个页面同时打开（插件浮窗和独立窗口、多个标签页）时，其他页面的修改实时同步过来
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== STORAGE_KEY || e.newValue == null) return
+    let notes: Note[]
+    try {
+      notes = JSON.parse(e.newValue)
+    } catch {
+      return
+    }
+    lastSaved = notes
+    useNotes.setState((s) => {
+      const has = (id: string | null) => id != null && notes.some((n) => n.id === id)
+      return {
+        notes,
+        selectedId: has(s.selectedId) ? s.selectedId : null,
+        // 正在编辑的便利贴保持编辑状态，结束编辑时再写入
+        editingId: has(s.editingId) ? s.editingId : null,
+      }
+    })
+  })
+}
 
 /** 便利贴第一行作为标题，用于提示条等场景 */
 export const noteTitle = (n: Note) => {
