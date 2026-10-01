@@ -17,7 +17,24 @@ export interface Note {
   createdAt: number
 }
 
-export const NOTE_DEFAULT_SIZE = { w: 220, h: 200 }
+/** 尺寸预设：悬浮操作栏的“小 / 中 / 大”按钮和 - / = 快捷键使用 */
+export const NOTE_SIZES = [
+  { key: 's', label: '小', w: 160, h: 140 },
+  { key: 'm', label: '中', w: 220, h: 200 },
+  { key: 'l', label: '大', w: 300, h: 280 },
+] as const
+export type NoteSize = (typeof NOTE_SIZES)[number]
+export const NOTE_DEFAULT_SIZE = { w: NOTE_SIZES[1].w, h: NOTE_SIZES[1].h }
+
+/** 便利贴当前正好是哪个预设尺寸（手动拖过大小则没有） */
+export const presetOf = (n: Pick<Note, 'w' | 'h'>) => NOTE_SIZES.find((p) => p.w === n.w && p.h === n.h)
+
+/** 按面积找下一档（dir=1 放大，-1 缩小）；已经是最大/最小时返回 undefined */
+export function stepPreset(n: Pick<Note, 'w' | 'h'>, dir: 1 | -1): NoteSize | undefined {
+  const area = n.w * n.h
+  const list = dir === 1 ? NOTE_SIZES : [...NOTE_SIZES].reverse()
+  return list.find((p) => (dir === 1 ? p.w * p.h > area : p.w * p.h < area))
+}
 const HISTORY_LIMIT = 20
 const STORAGE_KEY = 'stickydo.m0.notes'
 
@@ -25,7 +42,7 @@ const randomTilt = () => Math.round((Math.random() * 3 - 1.5) * 10) / 10
 
 function sampleNotes(): Note[] {
   const now = Date.now()
-  const base = { w: 230, h: 190, createdAt: now }
+  const base = { ...NOTE_DEFAULT_SIZE, createdAt: now }
   return [
     {
       ...base,
@@ -40,21 +57,20 @@ function sampleNotes(): Note[] {
     {
       ...base,
       id: uuidv7(),
-      content: '拖我试试\n按住拖动，拖到哪里放到哪里。拖右下角可以调整大小。',
+      content: '拖我试试\n按住拖动，拖到哪里放到哪里。悬停时上方的“小 中 大”可以一键调整大小，也可以拖右下角。',
       color: 'sky',
       x: 400,
-      y: 170,
+      y: 150,
       z: 2,
       tilt: 1.1,
     },
     {
       ...base,
       id: uuidv7(),
-      content: '换个颜色\n选中后按 1–8 换色，按 Delete 删除——随时可以 Ctrl+Z 撤销。按 ? 查看全部快捷键。',
+      content: '换个颜色和大小\n选中后按 1–8 换色，- / = 调大小，Delete 删除，随时可以 Ctrl+Z 撤销。按 ? 查看全部快捷键。',
       color: 'blossom',
       x: 260,
       y: 400,
-      h: 200,
       z: 3,
       tilt: -0.6,
     },

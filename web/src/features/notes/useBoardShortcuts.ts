@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { NOTE_COLORS } from '../../design/colors'
-import { deleteWithUndo } from './actions'
-import { type Note, useNotes } from './store'
+import { deleteWithUndo, resizeToPreset } from './actions'
+import { type Note, stepPreset, useNotes } from './store'
 import { nextNotePosition } from './viewport'
 
 /** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
@@ -73,6 +73,13 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         const color = NOTE_COLORS[Number(key) - 1].key
         const note = s.notes.find((n) => n.id === sel)
         if (note && note.color !== color) s.update(sel, { color })
+        return
+      }
+      if (key === '-' || key === '=' || key === '+') {
+        e.preventDefault()
+        const note = s.notes.find((n) => n.id === sel)
+        const target = note && stepPreset(note, key === '-' ? -1 : 1)
+        if (target) resizeToPreset(sel, target)
         return
       }
       if (key === 'Delete' || key === 'Backspace') {
