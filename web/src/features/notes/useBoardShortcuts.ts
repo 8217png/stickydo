@@ -1,0 +1,112 @@
+import { useEffect } from 'react'
+import { NOTE_COLORS } from '../../design/colors'
+import { deleteWithUndo } from './actions'
+import { type Note, useNotes } from './store'
+import { nextNotePosition } from './viewport'
+
+/** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
+function isTyping(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return true
+  const t = e.target as HTMLElement | null
+  return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+}
+
+/** 按阅读顺序（先上后下、先左后右）排列，用于 J/K 和方向键切换焦点 */
+const readingOrder = (notes: Note[]) =>
+  [...notes].sort((a, b) => (Math.abs(a.y - b.y) > 40 ? a.y - b.y : a.x - b.x))
+
+export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays: () => boolean }) {
+  const { toggleHelp, closeOverlays } = opts
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e)) return
+      const s = useNotes.getState()
+      const mod = e.metaKey || e.ctrlKey
+      const key = e.key
+
+      if (mod && key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) s.redo()
+        else s.undo()
+        return
+      }
+      if (mod && key.toLowerCase() === 'y') {
+        e.preventDefault()
+        s.redo()
+        return
+      }
+      if (mod || e.altKey) return
+
+      if (key === '?') {
+        e.preventDefault()
+        toggleHelp()
+        return
+      }
+      if (key === 'Escape') {
+        if (!closeOverlays()) s.select(null)
+        return
+      }
+      if (key === 'n' || key === 'N') {
+        e.preventDefault()
+        const id = s.create(nextNotePosition())
+        s.setEditing(id)
+        return
+      }
+
+      const nav = { j: 1, ArrowDown: 1, ArrowRight: 1, k: -1, ArrowUp: -1, ArrowLeft: -1 }[key]
+      if (nav) {
+        if (s.notes.length === 0) return
+        e.preventDefault()
+        const order = readingOrder(s.notes)
+        const i = order.findIndex((n) => n.id === s.selectedId)
+        const next = i === -1 ? (nav > 0 ? 0 : order.length - 1) : (i + nav + order.length) % order.length
+        s.select(order[next].id)
+        document.querySelector(`[data-note="${order[next].id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+        return
+      }
+
+      const sel = s.selectedId
+      if (!sel) return
+
+      if (/^[1-8]$/.test(key)) {
+        const color = NOTE_COLORS[Number(key) - 1].key
+        const note = s.notes.find((n) => n.id === sel)
+        if (note && note.color !== color) s.update(sel, { color })
+        return
+      }
+      if (key === 'Delete' || key === 'Backspace') {
+        e.preventDefault()
+        // 删除后焦点移到阅读顺序中的下一张，方便连续操作
+        const order = readingOrder(s.notes)
+        const i = order.findIndex((n) => n.id === sel)
+        const next = order[i + 1] ?? order[i - 1]
+        deleteWithUndo(sel)
+        if (next) useNotes.getState().select(next.id)
+        return
+      }
+      if (key === 'e' || key === 'E' || key === 'Enter') {
+        e.preventDefault()
+        s.bringToFront(sel)
+        s.setEditing(sel)
+      }
+    }
+
+    // 白板上粘贴文字 → 直接生成便利贴（docs/frontend-design.md §2.1）
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) return
+      const text = e.clipboardData?.getData('text/plain')?.trim()
+      if (!text) return
+      e.preventDefault()
+      useNotes.getState().create({ ...nextNotePosition(), content: text.slice(0, 5000) })
+    }
+
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('paste', onPaste)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('paste', onPaste)
+    }
+  }, [toggleHelp, closeOverlays])
+}

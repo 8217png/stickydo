@@ -1,0 +1,89 @@
+/*
+ * 设计 token（docs/frontend-design.md §5）
+ * 颜色、阴影、圆角、间距、字体、动效时长统一定义在这里，再映射到 Tailwind 主题。
+ * 主题由 <html data-theme="light|dark"> 决定（"跟随系统"在 JS 中解析）。
+ */
+:root {
+  /* 界面 */
+  --board-bg: #ece9e3;
+  --board-dot: rgb(60 50 30 / 0.07);
+  --ink: #2b2a26;
+  --ink-muted: #7a766d;
+  --ink-faint: #a8a398;
+  --chrome-bg: rgb(255 255 255 / 0.72);
+  --chrome-border: rgb(60 50 30 / 0.1);
+  --chrome-hover: rgb(60 50 30 / 0.06);
+  --focus-ring: #6b8afd;
+  --overdue: #e0893a;
+
+  /* 便利贴：浅色 */
+  --note-lemon: #fff4b8;
+  --note-peach: #ffd9c7;
+  --note-blossom: #ffd6e7;
+  --note-lavender: #e5dbff;
+  --note-sky: #cde8ff;
+  --note-mint: #cff5e1;
+  --note-sand: #f0e6d6;
+  --note-paper: #fafaf7;
+  --note-ink: #2b2a26;
+  --note-ink-muted: rgb(43 42 38 / 0.55);
+  --note-noise-opacity: 0.35;
+  --note-noise-blend: multiply;
+
+  /* 阴影：多层柔和；拿起时加深 */
+  --shadow-note:
+    0 1px 1px rgb(60 50 30 / 0.06), 0 2px 4px rgb(60 50 30 / 0.07),
+    0 8px 16px -6px rgb(60 50 30 / 0.14);
+  --shadow-note-lift:
+    0 2px 3px rgb(60 50 30 / 0.06), 0 14px 28px -8px rgb(60 50 30 / 0.26),
+    0 30px 60px -16px rgb(60 50 30 / 0.24);
+  --shadow-chrome: 0 1px 2px rgb(60 50 30 / 0.06), 0 8px 24px -8px rgb(60 50 30 / 0.18);
+
+  /* 圆角 */
+  --radius-note: 3px;
+  --radius-ui: 10px;
+
+  /* 字体 */
+  --font-ui: 'Inter', system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC',
+    'Source Han Sans SC', 'Microsoft YaHei', sans-serif;
+
+  /* 动效时长 */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-theme='dark'] {
+  --board-bg: #1c1b19;
+  --board-dot: rgb(255 248 230 / 0.06);
+  --ink: #ece7dc;
+  --ink-muted: #9b958a;
+  --ink-faint: #6d685f;
+  --chrome-bg: rgb(40 38 35 / 0.75);
+  --chrome-border: rgb(255 248 230 / 0.08);
+  --chrome-hover: rgb(255 248 230 / 0.07);
+  --focus-ring: #8aa2ff;
+  --overdue: #e6a066;
+
+  /* 便利贴：暗色（降低饱和度的深色调，单独设计，不是反色）——M0 初稿 */
+  --note-lemon: #4a4329;
+  --note-peach: #4d372b;
+  --note-blossom: #4a3039;
+  --note-lavender: #3a3450;
+  --note-sky: #2a3d4f;
+  --note-mint: #284339;
+  --note-sand: #443b30;
+  --note-paper: #3a3936;
+  --note-ink: #efe9dc;
+  --note-ink-muted: rgb(239 233 220 / 0.55);
+  --note-noise-opacity: 0.18;
+  --note-noise-blend: soft-light;
+
+  --shadow-note:
+    0 1px 1px rgb(0 0 0 / 0.3), 0 2px 4px rgb(0 0 0 / 0.25), 0 8px 16px -6px rgb(0 0 0 / 0.45);
+  --shadow-note-lift:
+    0 2px 3px rgb(0 0 0 / 0.3), 0 14px 28px -8px rgb(0 0 0 / 0.55),
+    0 30px 60px -16px rgb(0 0 0 / 0.5);
+  --shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+}
