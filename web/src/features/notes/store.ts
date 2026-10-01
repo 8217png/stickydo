@@ -70,6 +70,17 @@ function sampleNotes(): Note[] {
       z: 3,
       tilt: -0.6,
     },
+    {
+      ...base,
+      id: uuidv7(),
+      content:
+        '支持 Markdown\n- [x] **加粗**、*斜体*、~~删除线~~\n- [ ] 点一下方框就能勾选\n- [ ] 双击编辑，看看源码\n\n> 行首输入 `[]` 加空格就是一个待办',
+      color: 'mint',
+      x: 680,
+      y: 260,
+      z: 4,
+      tilt: 0.8,
+    },
   ]
 }
 

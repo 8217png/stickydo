@@ -5,6 +5,8 @@ import { NOTE_COLORS, noteColorVar } from '../../design/colors'
 import { useSettings } from '../settings'
 import { type Note, useNotes } from './store'
 import { deleteWithUndo } from './actions'
+import { handleMarkdownKey } from './markdownEditing'
+import { NoteMarkdown } from './NoteMarkdown'
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 32, mass: 0.8 } as const
 
@@ -120,19 +122,20 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
             }}
           />
         ) : (
-          <NoteContent content={note.content} />
+          <NoteContent note={note} />
         )}
       </motion.div>
     </Rnd>
   )
 })
 
-function NoteContent({ content }: { content: string }) {
-  const [first, ...rest] = content.split('\n')
+function NoteContent({ note }: { note: Note }) {
   return (
     <div className="note-text note-text-clip h-full overflow-hidden px-4 pt-4 pb-3 select-none">
-      <div className="font-semibold">{first}</div>
-      {rest.length > 0 && <div className="mt-1 text-note-ink/85">{rest.join('\n')}</div>}
+      <NoteMarkdown
+        content={note.content}
+        onChange={(content) => useNotes.getState().update(note.id, { content })}
+      />
     </div>
   )
 }
@@ -166,13 +169,18 @@ function NoteEditor({
   return (
     <textarea
       ref={ref}
-      className="no-drag note-text block h-full w-full resize-none bg-transparent px-4 pt-4 pb-3 outline-none placeholder:text-note-ink-muted"
+      spellCheck={false}
+      className="no-drag note-text note-editor block h-full w-full resize-none bg-transparent px-4 pt-4 pb-3 outline-none placeholder:text-note-ink-muted"
       value={value}
-      placeholder="写点什么…"
+      placeholder="写点什么…  支持 Markdown"
       onChange={(e) => setValue(e.target.value)}
       onBlur={finish}
       onKeyDown={(e) => {
         if (e.nativeEvent.isComposing) return
+        if (handleMarkdownKey(e)) {
+          e.preventDefault()
+          return
+        }
         if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
           e.preventDefault()
           ref.current?.blur()
