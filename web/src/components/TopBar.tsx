@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { type ThemePref, useSettings } from '../features/settings'
 import { NOTE_SIZES, useNotes } from '../features/notes/store'
 import { applyNoteSize } from '../features/notes/actions'
+import { openStandaloneWindow } from '../extension/standaloneWindow'
+import { isExtension, surface } from '../extension/surface'
 
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' }
 const THEME_LABEL: Record<ThemePref, string> = { system: '跟随系统', light: '浅色', dark: '暗色' }
@@ -16,8 +18,8 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
     <header className="pointer-events-none absolute inset-x-0 top-0 z-[9000] flex items-center justify-between p-3">
       <div className="pointer-events-auto flex items-center gap-2 rounded-ui border border-chrome-border bg-chrome px-3 py-1.5 shadow-chrome backdrop-blur-md">
         <Logo />
-        <span className="text-[14px] font-semibold tracking-tight max-sm:hidden">Sticky-Do</span>
-        <span className="ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint">M0</span>
+        <span className={`text-[14px] font-semibold tracking-tight max-sm:hidden ${isExtension ? 'hidden' : ''}`}>Sticky-Do</span>
+        <span className={`ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint ${isExtension ? 'hidden' : ''}`}>M0</span>
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
@@ -64,6 +66,11 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
           {theme === 'dark' && <path d="M13 9.5A5.5 5.5 0 016.5 3a5.5 5.5 0 106.5 6.5z" />}
           {theme === 'system' && <><circle cx="8" cy="8" r="5.5" /><path d="M8 2.5v11a5.5 5.5 0 000-11z" fill="currentColor" /></>}
         </IconButton>
+        {surface === 'ext-popup' && (
+          <IconButton title="在独立窗口打开（可自由调整大小）" onClick={() => void openStandaloneWindow()}>
+            <path d="M9.5 2.5h4v4M13.5 2.5L8 8M11.5 9.5v3a1 1 0 01-1 1h-7a1 1 0 01-1-1v-7a1 1 0 011-1h3" />
+          </IconButton>
+        )}
         <IconButton title="快捷键（?）" onClick={onHelp}>
           <rect x="1.5" y="4" width="13" height="8.5" rx="1.5" /><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M5 10h6" />
         </IconButton>

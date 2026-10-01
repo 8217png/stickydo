@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Sticky-Do",
+  "short_name": "Sticky-Do",
+  "description": "便利贴 + 待办。点击图标打开浮窗，离线单机可用，数据保存在本机。",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Sticky-Do（Alt+Shift+S）",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "打开 Sticky-Do 浮窗"
+    }
+  },
+  "minimum_chrome_version": "116"
+}

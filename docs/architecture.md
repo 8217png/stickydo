@@ -3,10 +3,10 @@
 ## 1. 总览
 
 ```
-┌─────────────┐  ┌──────────────┐  ┌─────────────┐
-│ React Web   │  │ Android(后期) │  │  iOS(后期)  │
-│ IndexedDB   │  │  SQLite      │  │  SQLite     │   ← 每个端都有本地存储
-└──────┬──────┘  └──────┬───────┘  └──────┬──────┘
+┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐
+│ React Web   │  │ Chrome 插件   │  │ Android(后期) │  │  iOS(后期)  │
+│ IndexedDB   │  │ 本机存储      │  │  SQLite      │  │  SQLite     │   ← 每个端都有本地存储
+└──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └──────┬──────┘
        │ REST (OpenAPI) + WebSocket(实时通知)
        ▼
 ┌──────────────────────────────────────────────┐
@@ -58,6 +58,15 @@
 | 自然语言时间解析 | chrono-node + 自定义中文规则 |
 | 快捷键 | tinykeys |
 | 组件开发 | Storybook |
+
+### Chrome 插件
+
+- 与 Web 共用同一套 React 代码（`web/`），构建时以 `popup.html` 为入口，产物在 `web/dist-extension/`（Manifest V3）。
+- 运行界面通过 `<html data-surface="extension">` 和 URL 区分：**浮窗**（`popup.html`）与**独立窗口**（`popup.html?window=1`，`chrome.windows.create({ type: 'popup' })`）。
+- 浮窗大小：Chrome 插件浮窗不能原生拖边调整，由页面尺寸决定（上限 800×600）。左下角的把手修改页面尺寸，松手后记住；`public/boot.js` 在首帧前恢复，避免闪动。
+- 独立窗口：自由调整大小，用 `chrome.windows.onBoundsChanged` 记住大小和位置；已打开时再点按钮直接切过去。
+- MV3 默认 CSP 禁止内联脚本和远程代码：首帧脚本放在 `public/boot.js`，不加载在线字体。
+- 存储：M0 阶段用插件源下的 localStorage，浮窗与独立窗口通过 `storage` 事件实时同步；之后与 Web 一起换成 IndexedDB（Dexie），登录后走统一的同步协议。
 
 ### 移动端（后期）
 
@@ -156,11 +165,15 @@ sticky-do/
 │   │   └── jobs/               # 回收站清理、提醒调度（二期）
 │   ├── migrations/
 │   └── queries/                # sqlc 使用的 .sql 文件
-├── web/                        # React
+├── web/                        # React（Web 与 Chrome 插件共用）
+│   ├── index.html              # Web 入口
+│   ├── popup.html              # Chrome 插件入口（浮窗 / 独立窗口）
+│   ├── extension/              # manifest.json、图标
 │   └── src/
 │       ├── api/                # 根据 OpenAPI 生成的客户端
 │       ├── sync/               # 本地数据库 + 同步引擎（后期可抽成共享包）
 │       ├── design/             # 设计 token、主题
+│       ├── extension/          # 插件专用：浮窗尺寸、独立窗口
 │       ├── features/{notes,todos,boards,auth,capture}/
 │       ├── components/
 │       └── routes/
