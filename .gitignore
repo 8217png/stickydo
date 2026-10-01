@@ -1,0 +1,15 @@
+# 本地临时文件（含发布指南，不公开）
+tmp/
+
+# 本地工具配置 / 环境变量
+.claude/
+.env
+*.log
+logs/
+
+# Go
+/server/bin/
+
+# Node
+node_modules/
+dist/
