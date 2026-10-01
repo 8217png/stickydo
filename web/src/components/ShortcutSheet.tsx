@@ -15,7 +15,6 @@ const GROUPS: { title: string; items: [keys: string[], label: string][] }[] = [
       [['J', 'K'], '切换焦点（也可以用方向键）'],
       [['E'], '编辑（也可以用 Enter 或双击）'],
       [['1', '–', '8'], '换颜色'],
-      [['-', '='], '缩小 / 放大（小、中、大三档）'],
       [['Delete'], '删除'],
       [['Esc'], '退出编辑 / 取消选中'],
     ],
@@ -23,6 +22,7 @@ const GROUPS: { title: string; items: [keys: string[], label: string][] }[] = [
   {
     title: '全局',
     items: [
+      [['-', '='], '全部便利贴缩小 / 放大一档并自动排列'],
       [['Ctrl', 'Z'], '撤销（最近 20 步）'],
       [['Ctrl', 'Shift', 'Z'], '重做'],
       [['?'], '显示 / 隐藏本页'],

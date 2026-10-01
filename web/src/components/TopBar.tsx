@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 import { type ThemePref, useSettings } from '../features/settings'
-import { useNotes } from '../features/notes/store'
+import { NOTE_SIZES, useNotes } from '../features/notes/store'
+import { applyNoteSize } from '../features/notes/actions'
 
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' }
 const THEME_LABEL: Record<ThemePref, string> = { system: '跟随系统', light: '浅色', dark: '暗色' }
 
 export function TopBar({ onHelp }: { onHelp: () => void }) {
-  const { theme, setTheme, tilt, setTilt } = useSettings()
+  const { theme, setTheme, tilt, setTilt, noteSize } = useSettings()
   const canUndo = useNotes((s) => s.past.length > 0)
   const canRedo = useNotes((s) => s.future.length > 0)
   const { undo, redo } = useNotes.getState()
@@ -15,11 +16,39 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
     <header className="pointer-events-none absolute inset-x-0 top-0 z-[9000] flex items-center justify-between p-3">
       <div className="pointer-events-auto flex items-center gap-2 rounded-ui border border-chrome-border bg-chrome px-3 py-1.5 shadow-chrome backdrop-blur-md">
         <Logo />
-        <span className="text-[14px] font-semibold tracking-tight">Sticky-Do</span>
+        <span className="text-[14px] font-semibold tracking-tight max-sm:hidden">Sticky-Do</span>
         <span className="ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint">M0</span>
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
+        <div className="flex items-center gap-0.5" role="group" aria-label="统一大小并自动排列">
+          <svg className="mx-1 text-ink-faint" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+            <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" />
+          </svg>
+          {NOTE_SIZES.map((p) => {
+            const active = p.key === noteSize
+            return (
+              <button
+                key={p.key}
+                type="button"
+                title={active ? `重新排列（快捷键 - / =）` : `全部统一为「${p.label}」并自动排列（快捷键 - / =）`}
+                aria-label={`全部统一为${p.label}号并自动排列`}
+                aria-pressed={active}
+                onClick={(e) => {
+                  // 鼠标点击后不保留焦点，免得之后按 - / = 时焦点环停在旧档位上
+                  if (e.detail > 0) e.currentTarget.blur()
+                  applyNoteSize(p.key)
+                }}
+                className={`grid h-8 min-w-8 place-items-center rounded-lg px-1.5 text-[13px] transition-colors hover:bg-chrome-hover ${
+                  active ? 'bg-chrome-hover font-semibold text-ink' : 'text-ink-muted'
+                }`}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+        <span className="mx-1 h-4 w-px bg-chrome-border" />
         <IconButton title="撤销（Ctrl+Z）" disabled={!canUndo} onClick={undo}>
           <path d="M5.5 4L3 6.5 5.5 9M3.5 6.5h6a3.5 3.5 0 010 7H8" />
         </IconButton>

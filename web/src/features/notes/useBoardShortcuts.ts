@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { NOTE_COLORS } from '../../design/colors'
-import { deleteWithUndo, resizeToPreset } from './actions'
-import { type Note, stepPreset, useNotes } from './store'
+import { deleteWithUndo, stepNoteSize } from './actions'
+import { readingOrder } from './layout'
+import { useNotes } from './store'
 import { nextNotePosition } from './viewport'
 
 /** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
@@ -10,10 +11,6 @@ function isTyping(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null
   return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
 }
-
-/** 按阅读顺序（先上后下、先左后右）排列，用于 J/K 和方向键切换焦点 */
-const readingOrder = (notes: Note[]) =>
-  [...notes].sort((a, b) => (Math.abs(a.y - b.y) > 40 ? a.y - b.y : a.x - b.x))
 
 export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays: () => boolean }) {
   const { toggleHelp, closeOverlays } = opts
@@ -54,6 +51,13 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         return
       }
 
+      if (key === '-' || key === '=' || key === '+') {
+        // 全局：统一所有便利贴的大小并自动排列
+        e.preventDefault()
+        stepNoteSize(key === '-' ? -1 : 1)
+        return
+      }
+
       const nav = { j: 1, ArrowDown: 1, ArrowRight: 1, k: -1, ArrowUp: -1, ArrowLeft: -1 }[key]
       if (nav) {
         if (s.notes.length === 0) return
@@ -73,13 +77,6 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         const color = NOTE_COLORS[Number(key) - 1].key
         const note = s.notes.find((n) => n.id === sel)
         if (note && note.color !== color) s.update(sel, { color })
-        return
-      }
-      if (key === '-' || key === '=' || key === '+') {
-        e.preventDefault()
-        const note = s.notes.find((n) => n.id === sel)
-        const target = note && stepPreset(note, key === '-' ? -1 : 1)
-        if (target) resizeToPreset(sel, target)
         return
       }
       if (key === 'Delete' || key === 'Backspace') {

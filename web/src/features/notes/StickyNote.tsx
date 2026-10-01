@@ -3,8 +3,8 @@ import { motion } from 'motion/react'
 import { Rnd } from 'react-rnd'
 import { NOTE_COLORS, noteColorVar } from '../../design/colors'
 import { useSettings } from '../settings'
-import { NOTE_SIZES, type Note, presetOf, useNotes } from './store'
-import { deleteWithUndo, resizeToPreset } from './actions'
+import { type Note, useNotes } from './store'
+import { deleteWithUndo } from './actions'
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 32, mass: 0.8 } as const
 
@@ -20,19 +20,8 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
   const [lifted, setLifted] = useState(false)
   const [hovered, setHovered] = useState(false)
   const draggedRef = useRef(false)
-  const resizingRef = useRef(false)
-
-  // 尺寸不是用户拖出来的（预设按钮、快捷键、撤销）时，用过渡动画平滑变化
-  const [sizeAnim, setSizeAnim] = useState(false)
-  const prevSize = useRef({ w: note.w, h: note.h })
-  useEffect(() => {
-    const prev = prevSize.current
-    prevSize.current = { w: note.w, h: note.h }
-    if (resizingRef.current || (prev.w === note.w && prev.h === note.h)) return
-    setSizeAnim(true)
-    const t = setTimeout(() => setSizeAnim(false), 260)
-    return () => clearTimeout(t)
-  }, [note.w, note.h])
+  // 用户正按着拖动/缩放时关闭过渡，跟手；其余的位置和尺寸变化（自动排列、撤销）都平滑过渡
+  const [interacting, setInteracting] = useState(false)
 
   const rotate = lifted || !tiltOn ? 0 : note.tilt
 
@@ -45,7 +34,9 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
       size={{ width: note.w, height: note.h }}
       style={{
         zIndex: note.z,
-        transition: sizeAnim ? 'width 240ms var(--ease-out), height 240ms var(--ease-out)' : undefined,
+        transition: interacting
+          ? undefined
+          : 'transform 420ms var(--ease-out), width 420ms var(--ease-out), height 420ms var(--ease-out)',
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -57,6 +48,7 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
       resizeHandleComponent={{ bottomRight: <ResizeGrip /> }}
       onDragStart={() => {
         draggedRef.current = false
+        setInteracting(true)
         bringToFront(note.id)
         select(note.id)
       }}
@@ -68,20 +60,20 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
       }}
       onDragStop={(_e, d) => {
         setLifted(false)
+        setInteracting(false)
         if (draggedRef.current && (d.x !== note.x || d.y !== note.y)) {
           update(note.id, { x: Math.round(d.x), y: Math.round(d.y) })
         }
       }}
       onResizeStart={() => {
-        resizingRef.current = true
+        setInteracting(true)
         bringToFront(note.id)
         select(note.id)
         setLifted(true)
       }}
       onResizeStop={(_e, _dir, el, _delta, pos) => {
         setLifted(false)
-        // 等这次尺寸写入 store、effect 跑完之后再清标记，避免触发过渡动画
-        requestAnimationFrame(() => (resizingRef.current = false))
+        setInteracting(false)
         update(note.id, {
           w: el.offsetWidth,
           h: el.offsetHeight,
@@ -138,7 +130,7 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
 function NoteContent({ content }: { content: string }) {
   const [first, ...rest] = content.split('\n')
   return (
-    <div className="note-text h-full overflow-hidden px-4 pt-4 pb-3 select-none">
+    <div className="note-text note-text-clip h-full overflow-hidden px-4 pt-4 pb-3 select-none">
       <div className="font-semibold">{first}</div>
       {rest.length > 0 && <div className="mt-1 text-note-ink/85">{rest.join('\n')}</div>}
     </div>
@@ -226,8 +218,6 @@ function NoteToolbar({ note, visible }: { note: Note; visible: boolean }) {
         </button>
       ))}
       <span className="mx-1 h-4 w-px bg-chrome-border" />
-      <SizePicker note={note} />
-      <span className="mx-1 h-4 w-px bg-chrome-border" />
       <button
         type="button"
         title="删除（Delete）"
@@ -239,32 +229,6 @@ function NoteToolbar({ note, visible }: { note: Note; visible: boolean }) {
           <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" />
         </svg>
       </button>
-    </div>
-  )
-}
-
-function SizePicker({ note }: { note: Note }) {
-  const current = presetOf(note)
-  return (
-    <div className="flex items-center gap-0.5" role="group" aria-label="大小">
-      {NOTE_SIZES.map((p) => {
-        const active = current?.key === p.key
-        return (
-          <button
-            key={p.key}
-            type="button"
-            title={`${p.label}（${p.w}×${p.h}）· 快捷键 - / =`}
-            aria-label={`大小：${p.label}`}
-            aria-pressed={active}
-            className={`grid h-6 min-w-6 place-items-center rounded-md px-1 text-[12px] transition-colors ${
-              active ? 'bg-chrome-hover font-semibold text-ink' : 'text-ink-muted hover:bg-chrome-hover hover:text-ink'
-            }`}
-            onClick={() => resizeToPreset(note.id, p)}
-          >
-            {p.label}
-          </button>
-        )
-      })}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { NOTE_DEFAULT_SIZE, useNotes } from './store'
+import { currentNoteSize, useNotes } from './store'
 import { StickyNote } from './StickyNote'
 import { setBoardViewport } from './viewport'
 
@@ -34,6 +34,7 @@ export function Whiteboard() {
         width: el.clientWidth,
         height: el.clientHeight,
         pointer: pointer.current,
+        scrollTo: (left: number, top: number) => el.scrollTo({ left, top, behavior: 'smooth' }),
       }
     })
     return () => setBoardViewport(null)
@@ -65,7 +66,7 @@ export function Whiteboard() {
           const p = toCanvas(e.clientX, e.clientY)
           const { create, setEditing } = useNotes.getState()
           const id = create({
-            x: Math.max(8, Math.round(p.x - NOTE_DEFAULT_SIZE.w / 2)),
+            x: Math.max(8, Math.round(p.x - currentNoteSize().w / 2)),
             y: Math.max(8, Math.round(p.y - 24)),
           })
           setEditing(id)

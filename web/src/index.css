@@ -83,6 +83,11 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* 内容超出便利贴时，底部柔和淡出，而不是生硬截断 */
+.note-text-clip {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent calc(100% - 4px));
+}
+
 /* 缩放手柄：只在悬停/选中时出现 */
 .note-resize-grip {
   opacity: 0;

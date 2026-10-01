@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { NoteColor } from '../../design/colors'
 import { uuidv7 } from '../../lib/id'
 import { load, save } from '../../lib/storage'
+import { type NoteSizeKey, useSettings } from '../settings'
 
 export interface Note {
   id: string
@@ -17,23 +18,18 @@ export interface Note {
   createdAt: number
 }
 
-/** 尺寸预设：悬浮操作栏的“小 / 中 / 大”按钮和 - / = 快捷键使用 */
 export const NOTE_SIZES = [
   { key: 's', label: '小', w: 160, h: 140 },
   { key: 'm', label: '中', w: 220, h: 200 },
   { key: 'l', label: '大', w: 300, h: 280 },
-] as const
+] as const satisfies readonly { key: NoteSizeKey; label: string; w: number; h: number }[]
 export type NoteSize = (typeof NOTE_SIZES)[number]
-export const NOTE_DEFAULT_SIZE = { w: NOTE_SIZES[1].w, h: NOTE_SIZES[1].h }
 
-/** 便利贴当前正好是哪个预设尺寸（手动拖过大小则没有） */
-export const presetOf = (n: Pick<Note, 'w' | 'h'>) => NOTE_SIZES.find((p) => p.w === n.w && p.h === n.h)
-
-/** 按面积找下一档（dir=1 放大，-1 缩小）；已经是最大/最小时返回 undefined */
-export function stepPreset(n: Pick<Note, 'w' | 'h'>, dir: 1 | -1): NoteSize | undefined {
-  const area = n.w * n.h
-  const list = dir === 1 ? NOTE_SIZES : [...NOTE_SIZES].reverse()
-  return list.find((p) => (dir === 1 ? p.w * p.h > area : p.w * p.h < area))
+export const sizeOf = (key: NoteSizeKey): NoteSize => NOTE_SIZES.find((p) => p.key === key) ?? NOTE_SIZES[1]
+/** 当前全局档位的尺寸，新建便利贴使用 */
+export const currentNoteSize = () => {
+  const { w, h } = sizeOf(useSettings.getState().noteSize)
+  return { w, h }
 }
 const HISTORY_LIMIT = 20
 const STORAGE_KEY = 'stickydo.m0.notes'
@@ -42,7 +38,7 @@ const randomTilt = () => Math.round((Math.random() * 3 - 1.5) * 10) / 10
 
 function sampleNotes(): Note[] {
   const now = Date.now()
-  const base = { ...NOTE_DEFAULT_SIZE, createdAt: now }
+  const base = { w: 220, h: 200, createdAt: now }
   return [
     {
       ...base,
@@ -57,7 +53,7 @@ function sampleNotes(): Note[] {
     {
       ...base,
       id: uuidv7(),
-      content: '拖我试试\n按住拖动，拖到哪里放到哪里。悬停时上方的“小 中 大”可以一键调整大小，也可以拖右下角。',
+      content: '拖我试试\n按住拖动，拖到哪里放到哪里。拖右下角可以单独调整这一张的大小。',
       color: 'sky',
       x: 400,
       y: 150,
@@ -67,7 +63,7 @@ function sampleNotes(): Note[] {
     {
       ...base,
       id: uuidv7(),
-      content: '换个颜色和大小\n选中后按 1–8 换色，- / = 调大小，Delete 删除，随时可以 Ctrl+Z 撤销。按 ? 查看全部快捷键。',
+      content: '整理一下\n右上角的“小 中 大”会统一所有便利贴的大小并自动排整齐（快捷键 - / =）。选中后按 1–8 换色，Delete 删除，Ctrl+Z 撤销。',
       color: 'blossom',
       x: 260,
       y: 400,
@@ -90,6 +86,8 @@ interface NotesState {
   update: (id: string, patch: Partial<Note>, opts?: { record?: boolean }) => void
   remove: (id: string, opts?: { record?: boolean }) => Note | undefined
   restore: (note: Note) => void
+  /** 一次性替换多张便利贴的字段（自动排列用），整体算一步撤销 */
+  patchMany: (patches: Map<string, Partial<Note>>) => void
   /** 丢弃刚新建、内容为空的便利贴，不留撤销记录 */
   discard: (id: string) => void
   bringToFront: (id: string) => void
@@ -120,7 +118,7 @@ export const useNotes = create<NotesState>()((set, get) => ({
       id: uuidv7(),
       content: '',
       color: 'lemon',
-      ...NOTE_DEFAULT_SIZE,
+      ...currentNoteSize(),
       tilt: randomTilt(),
       createdAt: Date.now(),
       ...init,
@@ -154,6 +152,11 @@ export const useNotes = create<NotesState>()((set, get) => ({
     if (s.notes.some((n) => n.id === note.id)) return
     s.checkpoint()
     set((s) => ({ notes: [...s.notes, note], selectedId: note.id }))
+  },
+
+  patchMany: (patches) => {
+    get().checkpoint()
+    set((s) => ({ notes: s.notes.map((n) => (patches.has(n.id) ? { ...n, ...patches.get(n.id) } : n)) }))
   },
 
   discard: (id) =>
