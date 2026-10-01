@@ -86,10 +86,29 @@ todos        (id, user_id, board_id NULL, note_id NULL,   -- 可以独立，也�
               sort_order, ...公共字段)
 
 tags         (id, user_id, name, color, ...公共字段)
-item_tags    (tag_id, item_type, item_id)
+item_tags    (id, user_id, tag_id, item_type, item_id,   -- 关联本身也是可同步实体
+              ...公共字段)                                -- UNIQUE (tag_id, item_type, item_id)
 
--- 公共字段：created_at, updated_at, deleted_at, version BIGINT
+-- 公共字段：created_at, updated_at, deleted_at, version BIGINT,
+--           field_versions JSONB                        -- 每个字段最后一次被修改时的 version，用于字段级 LWW
 ```
+
+- `item_tags` 同样带公共字段：打标签就是 upsert 一条关联，去标签就是软删除这条关联，因此可以和其他实体一样增量同步。`id` 由客户端生成（UUIDv7）；如果两台设备离线时给同一条内容打了同一个标签，服务端按唯一键合并为一条。
+
+### 待办的归属规则
+
+`todos` 有三个可空的归属字段，约束如下（由服务端在 Service 层校验，违反时返回 422）：
+
+| 情况 | `note_id` | `board_id` | `parent_id` |
+|---|---|---|---|
+| 收件箱里的独立待办 | NULL | NULL | NULL |
+| 看板里的独立待办 | NULL | 看板 ID | NULL |
+| 便利贴里的待办（checklist） | 便利贴 ID | **必须等于该便利贴的 `board_id`**（冗余字段，便于按看板查询） | NULL |
+| 子任务 | 与父任务相同 | 与父任务相同 | 父任务 ID |
+
+- **只有一层子任务**：父任务自身的 `parent_id` 必须为 NULL。
+- **跟随移动**：便利贴换看板时，其中的待办 `board_id` 一起更新；父任务移动（换看板、拖进或拖出便利贴）时，子任务一起移动。这些级联修改在同一个事务里完成，并各自获得新的 `version`，其他设备照常同步。
+- **级联删除**：删除便利贴或父任务时，其中的待办和子任务一起软删除；撤销时一起恢复。
 
 - `sort_order` 采用**分数索引**（fractional indexing，字符串类型）：拖拽排序时只需更新一条记录，多端同步时也不容易冲突。
 - `version` 取自用户级的全局递增序列（`user_sync_seq`），用于增量拉取。
@@ -107,7 +126,12 @@ GET  /api/v1/sync/pull?since=<version>
 WS   /api/v1/ws          服务端通知“有新版本”，客户端收到后执行 pull
 ```
 
-- **冲突策略**：第一期采用**字段级的“最后写入者胜”（LWW）**。不同字段的并发修改会全部保留，只有同一字段被同时修改时，才以后写入的为准。二期做多人协作时，对 `content` 字段引入 CRDT（Yjs）。
+- **`data` 是补丁，不是整条记录**：`op: "upsert"` 时，`data` 只包含本次修改过的字段（新建时包含全部字段）。客户端待推送队列中，同一条记录的多次修改会合并成一个补丁。
+- **冲突策略**：第一期采用**字段级的“最后写入者胜”（LWW）**，“后写入”指**后到达服务端**：
+  1. 服务端在事务中为本次写入分配新的 `version`，把补丁里的字段逐个写入，并把这些字段在 `field_versions` 中的值更新为新 `version`。补丁里没有的字段保持不变，所以不同字段的并发修改会全部保留。
+  2. 对补丁里的每个字段，如果它在 `field_versions` 中的值大于 `base_version`，说明在客户端上次拉取之后，别的设备也改过这个字段。此时仍以本次写入为准，但把该字段及被覆盖的旧值放进响应的 `conflicts`，客户端可以提示用户，或提供“恢复对方版本”的操作。
+  3. 删除（`op: "delete"`）同样按到达顺序处理：删除之后再到达的 upsert 会让记录“复活”（清空 `deleted_at`），避免离线编辑丢失。
+- 二期做多人协作时，对 `content` 字段引入 CRDT（Yjs），该字段不再走 LWW。
 - **客户端流程**：
   1. 用户操作先写入本地数据库（IndexedDB 或 SQLite），UI 立即更新（乐观更新）。
   2. 变更进入待推送队列，由后台执行 push。

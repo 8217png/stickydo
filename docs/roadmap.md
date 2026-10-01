@@ -19,4 +19,4 @@
 |---|---|---|
 | 1 | 移动端选 React Native (Expo) 还是原生开发 | 如果选 RN，应尽早把 `sync/`、API 客户端和设计 token 抽成 `packages/core` |
 | 2 | 第一期是否需要多人共享看板 | 如果需要，数据模型要从一开始就加入 `board_members` 表和权限校验 |
-| 3 | 便利贴暗色配色 | 需要在 M0 原型阶段确定 |
+| 3 | 便利贴暗色配色 | M0 原型已给出初稿（见 [frontend-design.md](frontend-design.md) §3.2），待在真机上看过后定稿 |

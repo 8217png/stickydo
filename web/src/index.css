@@ -1,0 +1,262 @@
+@import 'tailwindcss';
+@import './design/tokens.css';
+
+@theme {
+  --color-board: var(--board-bg);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-chrome: var(--chrome-bg);
+  --color-chrome-border: var(--chrome-border);
+  --color-chrome-hover: var(--chrome-hover);
+  --color-focus: var(--focus-ring);
+  --color-note-ink: var(--note-ink);
+  --color-note-ink-muted: var(--note-ink-muted);
+  --font-sans: var(--font-ui);
+  --radius-ui: var(--radius-ui);
+  --radius-note: var(--radius-note);
+  --shadow-chrome: var(--shadow-chrome);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--board-bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  transition: background-color var(--dur-slow) var(--ease-out);
+}
+
+/* 白板：浅暖灰底 + 极淡点阵 */
+.board-surface {
+  background-color: var(--board-bg);
+  background-image: radial-gradient(var(--board-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* 便利贴纸面 */
+.note-paper {
+  position: relative;
+  border-radius: var(--radius-note);
+  color: var(--note-ink);
+  box-shadow: var(--shadow-note);
+  transition:
+    box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-slow) var(--ease-out);
+}
+.note-paper[data-lifted='true'] {
+  box-shadow: var(--shadow-note-lift);
+}
+/* 极淡的纸张噪点纹理 */
+.note-paper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--note-noise-opacity);
+  mix-blend-mode: var(--note-noise-blend);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.45  0 0 0 0 0.35  0 0 0 0.35 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+/* 顶部一条很淡的“胶”痕，增加纸感 */
+.note-paper::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 18px;
+  border-radius: var(--radius-note) var(--radius-note) 0 0;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.035), transparent);
+  pointer-events: none;
+}
+
+.note-text {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 便利贴里的 Markdown ---------- */
+.note-md {
+  white-space: normal;
+}
+.note-md-title {
+  font-weight: 600;
+  white-space: pre-wrap;
+}
+.note-md-title + * {
+  margin-top: 4px;
+}
+.note-md > div > :first-child,
+.note-md > :first-child {
+  margin-top: 0;
+}
+.note-md p,
+.note-md ul,
+.note-md ol,
+.note-md blockquote,
+.note-md pre,
+.note-md table {
+  margin: 0 0 6px;
+}
+.note-md :is(p, ul, ol, blockquote, pre, table):last-child {
+  margin-bottom: 0;
+}
+.note-md h1,
+.note-md h2,
+.note-md h3,
+.note-md h4,
+.note-md h5,
+.note-md h6 {
+  margin: 10px 0 4px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+.note-md h1 { font-size: 17px; }
+.note-md h2 { font-size: 15.5px; }
+.note-md h3,
+.note-md h4,
+.note-md h5,
+.note-md h6 { font-size: 14px; }
+.note-md strong { font-weight: 650; }
+.note-md del { color: var(--note-ink-muted); }
+.note-md ul,
+.note-md ol { padding-left: 1.25em; }
+.note-md ul { list-style: disc; }
+.note-md ul ul { list-style: circle; }
+.note-md ol { list-style: decimal; }
+.note-md li::marker { color: var(--note-ink-muted); }
+.note-md li > ul,
+.note-md li > ol { margin: 2px 0 0; }
+.note-md a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--note-ink-muted);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.note-md a:hover { text-decoration-color: currentColor; }
+.note-md code {
+  font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.07);
+}
+[data-theme='dark'] .note-md code { background: rgb(255 255 255 / 0.1); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .note-md code { background: rgb(255 255 255 / 0.1); }
+}
+.note-md pre {
+  white-space: pre;
+  overflow-x: auto;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.06);
+}
+.note-md pre code { padding: 0; background: none; }
+.note-md blockquote {
+  padding-left: 8px;
+  border-left: 2px solid var(--note-ink-muted);
+  color: var(--note-ink-muted);
+}
+.note-md hr {
+  margin: 8px 0;
+  border: 0;
+  border-top: 1px dashed var(--note-ink-muted);
+  opacity: 0.6;
+}
+.note-md table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.note-md th,
+.note-md td {
+  padding: 2px 6px;
+  border: 1px solid rgb(0 0 0 / 0.12);
+  text-align: left;
+}
+.note-md th { font-weight: 600; }
+.note-md-img { color: var(--note-ink-muted); }
+
+/* 任务列表：可点击的圆角复选框 */
+.note-md li.task-list-item { list-style: none; }
+.note-md ul:has(> li.task-list-item) { padding-left: 0.1em; }
+.note-md li.task-list-item > ul { padding-left: 1.4em; }
+.note-md-check {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin: 0 6px 0 0;
+  vertical-align: -2.5px;
+  border-radius: 4px;
+  border: 1.5px solid var(--note-ink-muted);
+  color: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.note-md-check:hover { border-color: var(--note-ink); }
+.note-md-check:active { transform: scale(0.88); }
+.note-md-check:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.note-md-check[data-checked='true'] {
+  background: var(--note-ink);
+  border-color: var(--note-ink);
+  color: var(--note-paper);
+}
+/* 已完成的任务：划线、变淡 */
+.note-md li.task-list-item:has(> .note-md-check[data-checked='true']),
+.note-md li.task-list-item:has(> p > .note-md-check[data-checked='true']) {
+  color: var(--note-ink-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--note-ink-muted);
+}
+
+/* 编辑器：等宽一点的符号更好对齐，但正文仍用界面字体 */
+.note-editor { tab-size: 2; }
+
+/* 内容超出便利贴时，底部柔和淡出，而不是生硬截断 */
+.note-text-clip {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent calc(100% - 4px));
+}
+
+/* 缩放手柄：只在悬停/选中时出现 */
+.note-resize-grip {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.note-shell:hover .note-resize-grip,
+.note-shell[data-selected='true'] .note-resize-grip {
+  opacity: 1;
+}
+
+kbd {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--chrome-border);
+  background: var(--chrome-hover);
+  text-align: center;
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
