@@ -8,6 +8,7 @@ const CANVAS_MARGIN = 480
 
 export function Whiteboard() {
   const notes = useNotes((s) => s.notes)
+  const hydrated = useNotes((s) => s.hydrated)
   const selectedId = useNotes((s) => s.selectedId)
   const editingId = useNotes((s) => s.editingId)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -72,14 +73,18 @@ export function Whiteboard() {
           setEditing(id)
         }}
       >
-        <AnimatePresence initial={false}>
-          {notes.map((n) => (
-            <StickyNote key={n.id} note={n} selected={n.id === selectedId} editing={n.id === editingId} />
-          ))}
-        </AnimatePresence>
+        {/* 读完本地数据再挂载：首批便利贴不播放“贴上去”的入场动画 */}
+        {hydrated && (
+          <AnimatePresence initial={false}>
+            {notes.map((n) => (
+              <StickyNote key={n.id} note={n} selected={n.id === selectedId} editing={n.id === editingId} />
+            ))}
+          </AnimatePresence>
+        )}
       </div>
 
-      <AnimatePresence>{notes.length === 0 && <EmptyState />}</AnimatePresence>
+      {/* 本地数据读出来之前不显示空状态，避免一闪而过 */}
+      <AnimatePresence>{hydrated && notes.length === 0 && <EmptyState />}</AnimatePresence>
     </div>
   )
 }
