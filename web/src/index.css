@@ -101,20 +101,19 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* ---------- 便利贴里的 Markdown ---------- */
+/* ---------- 便利贴正文（显示与 Tiptap 编辑器共用） ---------- */
 .note-md {
   white-space: normal;
 }
-.note-md-title {
+/* 第一段是标题：加粗（与 M0 的约定一致） */
+.note-md > p:first-child {
   font-weight: 600;
-  white-space: pre-wrap;
 }
-.note-md-title + * {
-  margin-top: 4px;
-}
-.note-md > div > :first-child,
 .note-md > :first-child {
   margin-top: 0;
+}
+.note-md p {
+  min-height: 1.6em;
 }
 .note-md p,
 .note-md ul,
@@ -203,19 +202,36 @@ body {
   text-align: left;
 }
 .note-md th { font-weight: 600; }
-.note-md-img { color: var(--note-ink-muted); }
 
-/* 任务列表：可点击的圆角复选框 */
-.note-md li.task-list-item { list-style: none; }
-.note-md ul:has(> li.task-list-item) { padding-left: 0.1em; }
-.note-md li.task-list-item > ul { padding-left: 1.4em; }
+/* 任务列表：可点击的圆角复选框（显示状态） */
+.note-md li.task-list-item {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.note-md li.task-list-item > .note-md-check {
+  margin: 3.5px 0 0;
+  flex: none;
+}
+.note-md li.task-list-item > .task-item-body {
+  min-width: 0;
+  flex: 1;
+}
+.note-md .task-item-body > p {
+  font-weight: inherit;
+  margin: 0;
+}
+.note-md ul.contains-task-list {
+  padding-left: 0.1em;
+}
 .note-md-check {
   display: inline-grid;
   place-items: center;
   width: 15px;
   height: 15px;
   margin: 0 6px 0 0;
-  vertical-align: -2.5px;
+
   border-radius: 4px;
   border: 1.5px solid var(--note-ink-muted);
   color: transparent;
@@ -234,15 +250,72 @@ body {
   color: var(--note-paper);
 }
 /* 已完成的任务：划线、变淡 */
-.note-md li.task-list-item:has(> .note-md-check[data-checked='true']),
-.note-md li.task-list-item:has(> p > .note-md-check[data-checked='true']) {
+.note-md li.task-list-item[data-checked='true'] > .task-item-body,
+.note-md ul[data-type='taskList'] > li[data-checked='true'] > div {
   color: var(--note-ink-muted);
   text-decoration: line-through;
   text-decoration-color: var(--note-ink-muted);
 }
 
-/* 编辑器：等宽一点的符号更好对齐，但正文仍用界面字体 */
-.note-editor { tab-size: 2; }
+/* ---------- Tiptap 编辑器 ---------- */
+.note-editor {
+  min-height: 100%;
+  caret-color: var(--note-ink);
+}
+.note-editor ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.1em;
+}
+.note-editor ul[data-type='taskList'] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.note-editor ul[data-type='taskList'] > li > label {
+  flex: none;
+  margin-top: 3.5px;
+  user-select: none;
+}
+.note-editor ul[data-type='taskList'] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+.note-editor ul[data-type='taskList'] > li > div > p {
+  font-weight: inherit;
+}
+.note-editor ul[data-type='taskList'] input[type='checkbox'] {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border-radius: 4px;
+  border: 1.5px solid var(--note-ink-muted);
+  cursor: pointer;
+}
+.note-editor ul[data-type='taskList'] input[type='checkbox']:checked {
+  background: var(--note-ink);
+  border-color: var(--note-ink);
+}
+.note-editor ul[data-type='taskList'] input[type='checkbox']:checked::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  margin-top: -2px;
+  border: solid var(--note-paper);
+  border-width: 0 0 1.6px 1.6px;
+  transform: rotate(-45deg);
+}
+/* 占位提示 */
+.note-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--note-ink-muted);
+  font-weight: 400;
+}
 
 /* 内容超出便利贴时，底部柔和淡出，而不是生硬截断 */
 .note-text-clip {

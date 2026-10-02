@@ -51,7 +51,7 @@ func run() error {
 
 	authSvc := service.NewAuth(pool, auth.NewTokens(cfg.JWTSecret, cfg.AccessTTL), cfg.RefreshTTL, log)
 	handler, err := httpserver.New(httpserver.Deps{
-		Pool: pool, Auth: authSvc, Log: log, CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
+		Pool: pool, Auth: authSvc, Sync: service.NewSync(pool), Log: log, CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
 	})
 	if err != nil {
 		return err

@@ -3,10 +3,21 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { useSession } from '../features/auth/session'
+import { type SyncStatus, syncNow, useSyncStatus } from '../sync/engine'
+
+const STATUS: Record<SyncStatus, { label: string; color: string; pulse?: boolean }> = {
+  local: { label: '未登录，只保存在这台设备上', color: 'transparent' },
+  synced: { label: '已同步', color: 'var(--ok)' },
+  syncing: { label: '正在同步…', color: 'var(--overdue)', pulse: true },
+  pending: { label: '有改动等待上传', color: 'var(--overdue)' },
+  offline: { label: '离线，联网后自动同步', color: 'var(--ink-faint)' },
+  error: { label: '同步出错，稍后自动重试', color: 'var(--danger)' },
+}
 
 /** 顶栏右侧的账号入口：未登录时是“登录”，登录后是头像菜单。只在 Web 版显示。 */
 export function AccountMenu() {
   const user = useSession((s) => s.user)
+  const sync = useSyncStatus((s) => s.status)
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -46,6 +57,7 @@ export function AccountMenu() {
   }
 
   const initial = Array.from(user.name.trim() || user.email)[0]?.toUpperCase() ?? '?'
+  const st = STATUS[sync]
 
   return (
     <div ref={rootRef} className="relative ml-0.5">
@@ -53,13 +65,20 @@ export function AccountMenu() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`账号：${user.name}`}
-        title={user.email}
+        aria-label={`账号：${user.name}，${st.label}`}
+        title={`${user.email} · ${st.label}`}
         onClick={() => setOpen((o) => !o)}
-        className="grid size-8 place-items-center rounded-full text-[13px] font-semibold transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        className="relative grid size-8 place-items-center rounded-full text-[13px] font-semibold transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         style={{ background: 'var(--note-lavender)', color: 'var(--note-ink)' }}
       >
         {initial}
+        {/* 同步状态小圆点（docs/frontend-design.md §2.5：只用一个小圆点，不打扰） */}
+        <span
+          data-sync={sync}
+          aria-hidden
+          className={`absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-[var(--chrome-bg)] ${st.pulse ? 'animate-pulse' : ''}`}
+          style={{ background: st.color }}
+        />
       </button>
       <AnimatePresence>
         {open && (
@@ -75,6 +94,21 @@ export function AccountMenu() {
             <div className="px-3 pt-2 pb-2.5">
               <div className="truncate text-[13.5px] font-medium text-ink">{user.name}</div>
               <div className="truncate text-[12.5px] text-ink-muted">{user.email}</div>
+            </div>
+            <div className="flex items-center justify-between gap-2 px-3 pb-2.5 text-[12.5px] text-ink-muted">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span aria-hidden className="size-2 flex-none rounded-full" style={{ background: st.color }} />
+                <span className="truncate" data-testid="sync-status">{st.label}</span>
+              </span>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={sync === 'syncing'}
+                onClick={() => void syncNow()}
+                className="flex-none rounded-md px-1.5 py-0.5 text-[12px] text-ink transition-colors hover:bg-chrome-hover disabled:opacity-50"
+              >
+                立即同步
+              </button>
             </div>
             <div className="mx-1 h-px bg-chrome-border" />
             <button

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { NOTE_COLORS } from '../../design/colors'
 import { deleteWithUndo, stepNoteSize } from './actions'
 import { readingOrder } from './layout'
+import { docFromText } from './doc'
 import { useNotes } from './store'
 import { nextNotePosition } from './viewport'
 
@@ -103,7 +104,7 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
       const text = e.clipboardData?.getData('text/plain')?.trim()
       if (!text) return
       e.preventDefault()
-      useNotes.getState().create({ ...nextNotePosition(), content: text.slice(0, 5000) })
+      useNotes.getState().create({ ...nextNotePosition(), content: docFromText(text.slice(0, 5000)) })
     }
 
     window.addEventListener('keydown', onKey)

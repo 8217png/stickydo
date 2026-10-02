@@ -45,6 +45,11 @@ func runMain(m *testing.M) int {
 		tcpostgres.BasicWaitStrategies(),
 	)
 	if err != nil {
+		// make test 设置了 STICKYDO_REQUIRE_DOCKER=1：没有 Docker 时直接失败，而不是悄悄跳过
+		if os.Getenv("STICKYDO_REQUIRE_DOCKER") == "1" {
+			fmt.Fprintf(os.Stderr, "集成测试需要 Docker，但无法启动 PostgreSQL 容器：%v\n", err)
+			return 1
+		}
 		fmt.Fprintf(os.Stderr, "跳过集成测试：无法启动 PostgreSQL 容器（需要 Docker）：%v\n", err)
 		return 0
 	}
@@ -102,8 +107,10 @@ func newEnv(t *testing.T, opts ...envOpts) *env {
 	log := slog.New(slog.DiscardHandler)
 	svc := service.NewAuth(pool, auth.NewTokens(strings.Repeat("k", 32), 15*time.Minute), 30*24*time.Hour, log)
 	svc.Now = clk.Now
+	syncSvc := service.NewSync(pool)
+	syncSvc.Now = clk.Now
 	h, err := httpserver.New(httpserver.Deps{
-		Pool: pool, Auth: svc, Log: log, CORSOrigins: []string{"http://localhost:5173"},
+		Pool: pool, Auth: svc, Sync: syncSvc, Log: log, CORSOrigins: []string{"http://localhost:5173"},
 		AuthRateEvery: o.rateEvery, AuthRateBurst: o.rateBurst,
 	})
 	if err != nil {

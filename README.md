@@ -2,7 +2,7 @@
 
 便利贴 + 待办事项应用。第一期为 Go 服务端 + React Web 前端，后期支持 Android 与 iOS。
 
-> 当前进度：M1（服务端脚手架、认证、注册登录）已完成，设计文档见 [docs/](docs/README.md)。
+> 当前进度：M2（Tiptap 编辑器、本地优先 + 登录后同步）已完成，设计文档见 [docs/](docs/README.md)。
 
 ## 本地开发
 
@@ -14,12 +14,12 @@ make dev     # 启动 API 服务 :8080（启动时自动执行数据库迁移）
 make web     # 另开终端：启动前端 :5173，/api 自动代理到 :8080
 ```
 
-打开 http://localhost:5173 。不登录也能用白板（数据保存在浏览器里）；右上角可以注册、登录。
+打开 http://localhost:5173 。不登录也能用白板（数据保存在浏览器里）；右上角注册、登录后，便利贴在多台设备间同步：逐条比较，哪边新以哪边为准（规则见 [architecture.md §5](docs/architecture.md)）。
 
 | 命令 | 作用 |
 |---|---|
 | `make gen` | 改了 `api/openapi.yaml` 或 SQL 之后，重新生成 Go / TS 代码 |
-| `make test` | 服务端测试（含连真实 PostgreSQL 的集成测试，需要 Docker）+ 前端类型检查 |
+| `make test` | 服务端测试（含连真实 PostgreSQL 的集成测试，需要 Docker）+ 前端类型检查与单元测试 |
 | `make up` | 用 docker compose 启动全部服务（PostgreSQL、Redis、API） |
 | `cd web && npm run storybook` | 基础组件和页面的 Storybook（:6006） |
 
