@@ -4,6 +4,7 @@ import { NOTE_SIZES, useNotes } from '../features/notes/store'
 import { applyNoteSize } from '../features/notes/actions'
 import { openStandaloneWindow } from '../extension/standaloneWindow'
 import { isExtension, surface } from '../extension/surface'
+import { AccountMenu } from './AccountMenu'
 
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' }
 const THEME_LABEL: Record<ThemePref, string> = { system: '跟随系统', light: '浅色', dark: '暗色' }
@@ -19,12 +20,12 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
       <div className="pointer-events-auto flex items-center gap-2 rounded-ui border border-chrome-border bg-chrome px-3 py-1.5 shadow-chrome backdrop-blur-md">
         <Logo />
         <span className={`text-[14px] font-semibold tracking-tight max-sm:hidden ${isExtension ? 'hidden' : ''}`}>Sticky-Do</span>
-        <span className={`ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint ${isExtension ? 'hidden' : ''}`}>M0</span>
+        <span className={`ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint ${isExtension ? 'hidden' : ''}`}>M1</span>
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
         <div className="flex items-center gap-0.5" role="group" aria-label="统一大小并自动排列">
-          <svg className="mx-1 text-ink-faint" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+          <svg className="mx-1 text-ink-faint max-sm:hidden" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
             <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" />
           </svg>
           {NOTE_SIZES.map((p) => {
@@ -74,6 +75,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
         <IconButton title="快捷键（?）" onClick={onHelp}>
           <rect x="1.5" y="4" width="13" height="8.5" rx="1.5" /><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M5 10h6" />
         </IconButton>
+        {surface === 'web' && <AccountMenu />}
       </div>
     </header>
   )

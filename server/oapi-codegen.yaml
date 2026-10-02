@@ -1,0 +1,10 @@
+# 由 api/openapi.yaml 生成 Go 类型与 chi strict server 接口：make gen
+package: api
+output: internal/http/api/api.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+  embedded-spec: true
+output-options:
+  skip-prune: false
