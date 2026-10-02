@@ -5,6 +5,7 @@ import { readingOrder } from './layout'
 import { docFromText } from './doc'
 import { useNotes } from './store'
 import { nextNotePosition } from './viewport'
+import { openCapture, openPalette, useCommandUI } from '../capture/state'
 
 /** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
 function isTyping(e: KeyboardEvent) {
@@ -18,10 +19,18 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e)) return
-      const s = useNotes.getState()
       const mod = e.metaKey || e.ctrlKey
       const key = e.key
+      // Ctrl/⌘+K：命令面板。在编辑便利贴时也能用；面板自己处理再按一次关闭
+      if (mod && !e.shiftKey && !e.altKey && key.toLowerCase() === 'k' && !e.isComposing) {
+        if (useCommandUI.getState().paletteOpen) return
+        e.preventDefault()
+        ;(document.activeElement as HTMLElement | null)?.blur?.()
+        openPalette()
+        return
+      }
+      if (isTyping(e)) return
+      const s = useNotes.getState()
 
       if (mod && key.toLowerCase() === 'z') {
         e.preventDefault()
@@ -43,6 +52,17 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
       }
       if (key === 'Escape') {
         if (!closeOverlays()) s.select(null)
+        return
+      }
+      // Q：快速记录；T：快速记录一条待办（预填 “[] ”）
+      if (key === 'q' || key === 'Q') {
+        e.preventDefault()
+        openCapture()
+        return
+      }
+      if (key === 't' || key === 'T') {
+        e.preventDefault()
+        openCapture('[] ')
         return
       }
       if (key === 'n' || key === 'N') {

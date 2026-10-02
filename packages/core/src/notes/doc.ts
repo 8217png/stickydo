@@ -57,3 +57,32 @@ export function trimDoc(d: NoteDoc): NoteDoc {
 export function isNoteDoc(v: unknown): v is NoteDoc {
   return !!v && typeof v === 'object' && (v as { type?: unknown }).type === 'doc'
 }
+
+/**
+ * 去掉待办项属性里的默认值（due: null、priority: 0、tags: []）。
+ * 编辑器会给每个待办项补上这些默认值；保存前去掉，内容才不会因为“打开又关上”而变化。
+ */
+export function cleanDoc<T extends JSONContent>(node: T): T {
+  let changed = false
+  let attrs = node.attrs
+  if (node.type === 'taskItem' && attrs) {
+    const { due, priority, tags, ...rest } = attrs
+    const next: Record<string, any> = { ...rest }
+    if (due != null && due !== '') next.due = due
+    if (priority) next.priority = priority
+    if (Array.isArray(tags) && tags.length) next.tags = tags
+    if (Object.keys(next).length !== Object.keys(attrs).length) {
+      attrs = next
+      changed = true
+    }
+  }
+  let content = node.content
+  if (content) {
+    const cleaned = content.map(cleanDoc)
+    if (cleaned.some((c, i) => c !== content![i])) {
+      content = cleaned
+      changed = true
+    }
+  }
+  return changed ? { ...node, attrs, content } : node
+}

@@ -10,7 +10,8 @@
     "./sync": "./src/sync/index.ts",
     "./storage": "./src/storage/index.ts",
     "./notes": "./src/notes/doc.ts",
-    "./design": "./src/design/tokens.ts"
+    "./design": "./src/design/tokens.ts",
+    "./capture": "./src/capture/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -b",
@@ -18,6 +19,7 @@
     "gen:api": "npx -y -p openapi-typescript@7.13.0 -p typescript@5.9.3 openapi-typescript ../../api/openapi.yaml -o src/api/schema.d.ts"
   },
   "dependencies": {
+    "chrono-node": "^2.10.1",
     "openapi-fetch": "^0.17.0",
     "zustand": "^5.0.15"
   },

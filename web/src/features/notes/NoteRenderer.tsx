@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from 'react'
 import type { JSONContent } from '@tiptap/core'
+import { dueStatus, formatDue, hasTodoMeta, PRIORITY_LABEL, todoMeta } from '@stickydo/core/capture'
 import type { NoteDoc } from './doc'
 
 /**
@@ -73,7 +74,10 @@ function renderNode(node: JSONContent, path: number[], toggle: Toggle): ReactNod
               <path d="M2 5.2l2 2 4-4.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <div className="task-item-body">{kids()}</div>
+          <div className="task-item-body">
+            {kids()}
+            <TodoMetaChips attrs={node.attrs} />
+          </div>
         </li>
       )
     }
@@ -151,4 +155,34 @@ export function toggleTaskAt(doc: NoteDoc, path: number[]): NoteDoc {
     return { ...node, content }
   }
   return update(doc, 0) as NoteDoc
+}
+
+/** 待办项下方的小标签：时间（逾期用柔和的橙色）、优先级、标签 */
+function TodoMetaChips({ attrs }: { attrs: JSONContent['attrs'] }) {
+  const meta = todoMeta(attrs)
+  if (!hasTodoMeta(meta)) return null
+  const status = meta.due && dueStatus(meta.due)
+  return (
+    <span className="todo-meta">
+      {meta.due && (
+        <span className="todo-chip" data-status={status} title={status === 'overdue' ? '已逾期' : undefined}>
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+            <rect x="2" y="3" width="12" height="11" rx="2" />
+            <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" />
+          </svg>
+          {formatDue(meta.due)}
+        </span>
+      )}
+      {meta.priority > 0 && (
+        <span className="todo-chip" data-priority={meta.priority}>
+          !{PRIORITY_LABEL[meta.priority]}
+        </span>
+      )}
+      {meta.tags.map((t) => (
+        <span key={t} className="todo-chip todo-tag">
+          #{t}
+        </span>
+      ))}
+    </span>
+  )
 }

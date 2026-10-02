@@ -6,7 +6,7 @@ import { NOTE_COLORS, noteColorVar } from '../../design/colors'
 import { useSettings } from '../settings'
 import { type Note, noteTilt, useNotes } from './store'
 import { deleteWithUndo } from './actions'
-import { docIsEmpty, type NoteDoc, trimDoc } from './doc'
+import { cleanDoc, docIsEmpty, type NoteDoc, trimDoc } from './doc'
 import { noteExtensions } from './extensions'
 import { NoteRenderer, toggleTaskAt } from './NoteRenderer'
 
@@ -117,7 +117,7 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
                 else discard(note.id)
                 return
               }
-              if (JSON.stringify(content) !== JSON.stringify(trimDoc(note.content))) {
+              if (JSON.stringify(content) !== JSON.stringify(cleanDoc(trimDoc(note.content)))) {
                 checkpoint(snapshot)
                 update(note.id, { content }, { record: false })
               }
@@ -172,7 +172,8 @@ function NoteEditor({ note, onDone }: { note: Note; onDone: (content: NoteDoc, s
         return false
       },
     },
-    onBlur: ({ editor }) => finish(trimDoc(editor.getJSON() as NoteDoc)),
+    // 去掉编辑器补上的默认属性和末尾空段落，内容没改时与原来完全一致
+    onBlur: ({ editor }) => finish(cleanDoc(trimDoc(editor.getJSON() as NoteDoc))),
   })
 
   return (
