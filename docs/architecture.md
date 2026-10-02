@@ -5,7 +5,7 @@
 ```
 ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐
 │ React Web   │  │ Chrome 插件   │  │ Android(后期) │  │  iOS(后期)  │
-│ IndexedDB   │  │ 本机存储      │  │  SQLite      │  │  SQLite     │   ← 每个端都有本地存储
+│ IndexedDB   │  │ IndexedDB    │  │  SQLite      │  │  SQLite     │   ← 每个端都有本地存储
 └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └──────┬──────┘
        │ REST (OpenAPI) + WebSocket(实时通知)
        ▼
@@ -52,7 +52,7 @@
 | 路由 | React Router |
 | 服务端状态 | TanStack Query |
 | 本地状态与撤销栈 | Zustand（撤销通过中间件实现） |
-| 本地存储 | Dexie（IndexedDB）：离线缓存与待推送队列 |
+| 本地存储 | Dexie（IndexedDB）：每张便利贴一行，只写变化的行；不可用时退回 localStorage |
 | UI 基础 | Tailwind + shadcn/ui（Radix UI） |
 | 动效 | Motion（原 Framer Motion） |
 | 命令面板 | cmdk |
@@ -70,7 +70,7 @@
 - 浮窗大小：Chrome 插件浮窗不能原生拖边调整，由页面尺寸决定（上限 800×600）。左下角的把手修改页面尺寸，松手后记住；`public/boot.js` 在首帧前恢复，避免闪动。
 - 独立窗口：自由调整大小，用 `chrome.windows.onBoundsChanged` 记住大小和位置；已打开时再点按钮直接切过去。
 - MV3 默认 CSP 禁止内联脚本和远程代码：首帧脚本放在 `public/boot.js`，不加载在线字体。
-- 存储：M0 阶段用插件源下的 localStorage，浮窗与独立窗口通过 `storage` 事件实时同步；之后与 Web 一起换成 IndexedDB（Dexie），登录后走统一的同步协议。
+- 存储：与 Web 相同，用插件源下的 IndexedDB（Dexie）；浮窗与独立窗口通过 BroadcastChannel 实时同步。登录后的同步见 E2。
 
 ### 移动端（后期）
 
@@ -183,7 +183,12 @@ POST /api/v1/sync/push
 - 本地数据按账号分开存：未登录时用“本机”这一份，登录后用该账号的一份。
 - **第一次登录时，本机（未登录时）的便利贴并入账号**，随后上传。
 - 退出登录后回到“本机”那一份；账号的数据仍缓存在本机，下次登录立即出现，再与服务端同步。共用电脑时，退出后别人看不到你的便利贴。
-- M2 用 localStorage；数据量变大后换 IndexedDB（Dexie），同步规则不变。
+- **存储**：IndexedDB（Dexie，库名 `stickydo`），表 `notes` / `tombstones` 以 `[owner+id]` 为主键，`meta` 记录每个归属的同步游标；每次保存只写变化的行。浏览器不允许使用 IndexedDB 时（例如部分隐私模式）退回 localStorage，规则不变。
+  - 读取是异步的：读完之前白板不显示便利贴，也不显示空状态，避免闪烁；首批便利贴不播放入场动画。
+  - 多个标签页（以及插件的浮窗和独立窗口）通过 BroadcastChannel 互相通知：收到通知时先等本页的保存完成，再重新读取。因为按行写入，两个页面同时改不同的便利贴不会互相覆盖。
+  - 第一次打开时，自动把 localStorage 里的旧数据（M2 的各归属数据、M0/M1 的 Markdown 便利贴）迁移进来，确认写入成功后删除旧数据。
+  - 登录状态、主题等设置很小，且要在首帧前同步读到，仍放在 localStorage。
+  - 会尝试申请持久化存储（`navigator.storage.persist()`），减少浏览器在空间紧张时清除数据的可能。
 
 除同步接口外，后续也会提供常规的 REST CRUD 接口（`/notes`、`/todos`、`/boards`、`/search`），方便调试和第三方集成。
 
@@ -232,6 +237,7 @@ sticky-do/
 │   └── src/
 │       ├── api/                # OpenAPI 生成的类型（schema.d.ts）与客户端
 │       ├── sync/               # 同步：合并规则（纯函数，有单元测试）+ 同步引擎（后期可抽成共享包）
+│       ├── storage/            # 本地存储：IndexedDB（Dexie），退路 localStorage
 │       ├── design/             # 设计 token、主题
 │       ├── extension/          # 插件专用：浮窗尺寸、独立窗口
 │       ├── features/{notes,todos,boards,auth,capture}/

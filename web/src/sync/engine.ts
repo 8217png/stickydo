@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { api, ApiError, toApiError, type Schemas } from '../api/client'
 import { surface } from '../extension/surface'
 import { useSession } from '../features/auth/session'
-import { applySyncResult, LOCAL_OWNER, setSyncCursor, switchOwner, useNotes } from '../features/notes/store'
+import { applySyncResult, hydrateNotes, LOCAL_OWNER, setSyncCursor, switchOwner, useNotes } from '../features/notes/store'
 import { applyPushResults, collectChanges, dropUntouchedSamples, mergePulled } from './merge'
 import type { LocalChange, PushOutcome, RemoteNote } from './model'
 
@@ -104,6 +104,7 @@ function pendingChanges() {
 }
 
 async function syncOnce() {
+  await hydrateNotes()
   const user = useSession.getState().user
   const owner = useNotes.getState().owner
   if (!user || owner !== user.id) return
@@ -163,15 +164,18 @@ function scheduleAfterEdit() {
 }
 
 /** 登录状态变化时切换本地数据：登录后并入本机便利贴并立即同步；退出后回到本机数据 */
-function followSession() {
+async function followSession() {
+  await hydrateNotes()
   const user = useSession.getState().user
   const owner = useNotes.getState().owner
   if (user && owner !== user.id) {
-    switchOwner(user.id, { mergeLocal: true })
+    await switchOwner(user.id, { mergeLocal: true })
   } else if (!user && owner !== LOCAL_OWNER) {
     clearTimeout(editTimer)
-    switchOwner(LOCAL_OWNER)
+    await switchOwner(LOCAL_OWNER)
   }
+  // 切换期间登录状态又变了：以最新的为准，由下一次 followSession 处理
+  if ((useSession.getState().user?.id ?? null) !== (user?.id ?? null)) return
   if (user) {
     if (useSyncStatus.getState().status === 'local') useSyncStatus.setState({ status: pendingChanges().length ? 'pending' : 'syncing' })
     void syncNow()
@@ -187,13 +191,13 @@ export function startSyncEngine() {
   if (started || surface !== 'web') return
   started = true
 
-  followSession()
+  void followSession()
   let lastUserId = useSession.getState().user?.id ?? null
   useSession.subscribe((s) => {
     const id = s.user?.id ?? null
     if (id === lastUserId) return
     lastUserId = id
-    followSession()
+    void followSession()
   })
 
   // 本地编辑（包括结束编辑一张便利贴）后安排同步

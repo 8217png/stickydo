@@ -5,7 +5,8 @@ import { type NoteSizeKey, useSettings } from '../settings'
 import { currentPopupSize } from '../../extension/popupSize'
 import { surface } from '../../extension/surface'
 import { commitLocal, patchSnapshot } from '../../sync/merge'
-import type { Note, NotesData, RemoteNote, Tombstone } from '../../sync/model'
+import type { Note, NotesData, RemoteNote } from '../../sync/model'
+import { emptyPersisted, migrateFromLocalStorage, type NotesRepo, openNotesRepo, type Persisted } from '../../storage/notesRepo'
 import { docTitle, emptyDoc, isNoteDoc, markdownToDoc } from './doc'
 import { gridLayout } from './layout'
 
@@ -100,20 +101,13 @@ function baseSampleNotes() {
 
 /** 未登录时的“本机”数据 */
 export const LOCAL_OWNER = 'local'
-const keyFor = (owner: string) => `stickydo.notes.v2:${owner}`
 const LEGACY_KEY = 'stickydo.m0.notes'
 const SEEDED_KEY = 'stickydo.seeded'
 
-interface Persisted extends NotesData {
-  /** 同步游标：上次拉取到的服务端版本 */
-  cursor: number
-}
-
-const emptyPersisted = (): Persisted => ({ notes: [], tombstones: [], cursor: 0 })
-
 /** 兼容旧数据：M0/M1 的正文是 Markdown 文本，倾斜角度和创建时间存在便利贴上 */
-function normalizeNote(raw: Record<string, unknown>): Note | null {
-  if (typeof raw.id !== 'string') return null
+function normalizeNote(input: unknown): Note | null {
+  const raw = input as Record<string, unknown> | null
+  if (!raw || typeof raw.id !== 'string') return null
   const content = isNoteDoc(raw.content) ? raw.content : typeof raw.content === 'string' ? markdownToDoc(raw.content) : emptyDoc()
   const legacy = typeof raw.version !== 'number'
   return {
@@ -135,39 +129,35 @@ function normalizeNote(raw: Record<string, unknown>): Note | null {
   }
 }
 
-function readPersisted(owner: string): Persisted | null {
-  const p = load<Partial<Persisted>>(keyFor(owner))
-  if (!p) return null
-  return {
-    notes: (p.notes ?? []).map((n) => normalizeNote(n as unknown as Record<string, unknown>)).filter((n): n is Note => !!n),
-    tombstones: p.tombstones ?? [],
-    cursor: p.cursor ?? 0,
-  }
+let repoPromise: Promise<NotesRepo> | null = null
+
+/** 打开本地存储（IndexedDB，必要时退回 localStorage），并把旧的 localStorage 数据迁移过去 */
+function getRepo(): Promise<NotesRepo> {
+  repoPromise ??= (async () => {
+    const repo = await openNotesRepo()
+    await migrateFromLocalStorage(repo, normalizeNote)
+    return repo
+  })()
+  return repoPromise
 }
 
-function loadOwner(owner: string): Persisted {
-  const p = readPersisted(owner)
-  if (p) return p
-  if (owner !== LOCAL_OWNER) return emptyPersisted()
-  // 本机数据第一次读取：迁移旧版数据，或者放几张示例便利贴
-  const legacy = load<Record<string, unknown>[]>(LEGACY_KEY)
-  if (legacy) {
-    const migrated: Persisted = { ...emptyPersisted(), notes: legacy.map(normalizeNote).filter((n): n is Note => !!n) }
-    save(keyFor(LOCAL_OWNER), migrated)
-    save(SEEDED_KEY, true)
-    try {
-      localStorage.removeItem(LEGACY_KEY)
-    } catch {
-      /* ignore */
-    }
-    return migrated
-  }
-  if (load<boolean>(SEEDED_KEY)) return emptyPersisted()
-  // 示例便利贴立即保存：否则没有任何编辑时不会写入，刷新后就没了
-  const seeded: Persisted = { ...emptyPersisted(), notes: sampleNotes() }
-  save(keyFor(LOCAL_OWNER), seeded)
-  save(SEEDED_KEY, true)
-  return seeded
+async function readPersisted(owner: string): Promise<Persisted | null> {
+  const p = await (await getRepo()).load(owner)
+  if (!p) return null
+  return { ...p, notes: p.notes.map(normalizeNote).filter((n): n is Note => !!n) }
+}
+
+/** 读取某个归属的数据；本机数据第一次读取时迁移最早的旧数据，或者放几张示例便利贴 */
+async function loadOwner(owner: string): Promise<{ data: Persisted; saved: Persisted | null }> {
+  const saved = await readPersisted(owner)
+  if (saved) return { data: saved, saved }
+  if (owner !== LOCAL_OWNER) return { data: emptyPersisted(), saved: null }
+  // “已放过示例”的标记和删除旧 key，都要等数据真正写入存储之后（见 persistNow），
+  // 否则刚打开就关掉页面，下次既没有示例也没有数据
+  const legacy = load<unknown[]>(LEGACY_KEY)
+  if (legacy) return { data: { ...emptyPersisted(), notes: legacy.map(normalizeNote).filter((n): n is Note => !!n) }, saved: null }
+  if (load<boolean>(SEEDED_KEY)) return { data: emptyPersisted(), saved: null }
+  return { data: { ...emptyPersisted(), notes: sampleNotes() }, saved: null }
 }
 
 // ---------- 状态 ----------
@@ -175,6 +165,8 @@ function loadOwner(owner: string): Persisted {
 interface NotesState extends Persisted {
   /** 当前数据属于谁：LOCAL_OWNER 或用户 id */
   owner: string
+  /** 本地数据是否已经读出来（IndexedDB 是异步的） */
+  hydrated: boolean
   past: Note[][]
   future: Note[][]
   selectedId: string | null
@@ -207,7 +199,6 @@ function storedUserId(): string | null {
 
 // 页面加载时就读当前账号的数据，不会先闪一下“本机”的便利贴
 const initialOwner = surface === 'web' ? (storedUserId() ?? LOCAL_OWNER) : LOCAL_OWNER
-const initial = loadOwner(initialOwner)
 
 export const useNotes = create<NotesState>()((set, get) => {
   /** 所有本地编辑都经过这里：标记改动、记录墓碑（sync/merge.ts commitLocal） */
@@ -215,8 +206,9 @@ export const useNotes = create<NotesState>()((set, get) => {
     set((s) => ({ ...commitLocal(s, next, Date.now()), ...extra }))
 
   return {
-    ...initial,
+    ...emptyPersisted(),
     owner: initialOwner,
+    hydrated: false,
     past: [],
     future: [],
     selectedId: null,
@@ -346,18 +338,85 @@ export function setSyncCursor(owner: string, cursor: number) {
   useNotes.setState((s) => (s.owner === owner ? { cursor } : s))
 }
 
+// ---------- 持久化 ----------
+
+/** 每个归属上次写入存储的内容：保存时与它比较，只写变化的行 */
+const persisted = new Map<string, Persisted | null>()
+let saveChain: Promise<void> = Promise.resolve()
+/** 收到其他标签页的通知时，本页还有没保存的改动：保存后再重新读取 */
+let reloadPending = false
+
+const snapshotOf = (s: Persisted): Persisted => ({ notes: s.notes, tombstones: s.tombstones, cursor: s.cursor })
+const samePersisted = (a: Persisted | null | undefined, b: Persisted) =>
+  !!a && a.notes === b.notes && a.tombstones === b.tombstones && a.cursor === b.cursor
+
+/** 排队保存（按顺序执行），保存后通知其他标签页 */
+function persistNow(owner: string, next: Persisted) {
+  const prev = persisted.get(owner) ?? null
+  if (samePersisted(prev, next)) return
+  persisted.set(owner, next)
+  saveChain = saveChain
+    .then(async () => {
+      await (await getRepo()).save(owner, prev, next)
+      // 本机数据第一次写入成功：再记下“已放过示例”，并删除最早的旧数据
+      if (owner === LOCAL_OWNER && !prev) {
+        save(SEEDED_KEY, true)
+        removeLegacy()
+      }
+      channel?.postMessage({ owner })
+      if (reloadPending) {
+        reloadPending = false
+        void reloadFromStorage()
+      }
+    })
+    .catch((err) => console.error('[storage] 保存失败', err))
+}
+
+function removeLegacy() {
+  try {
+    localStorage.removeItem(LEGACY_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 等待所有排队中的保存完成 */
+export const flushSaves = () => saveChain
+
+useNotes.subscribe((s) => {
+  if (!s.hydrated) return
+  persistNow(s.owner, snapshotOf(s))
+})
+
+let hydrating: Promise<void> | null = null
+
+/** 启动时读取当前归属的数据。完成前白板不显示，避免闪一下空白板。 */
+export function hydrateNotes(): Promise<void> {
+  hydrating ??= (async () => {
+    const owner = useNotes.getState().owner
+    const { data, saved } = await loadOwner(owner)
+    persisted.set(owner, saved)
+    useNotes.setState({ ...data, hydrated: true })
+  })()
+  return hydrating
+}
+
 /**
  * 切换数据归属（登录、退出、换账号）。
  * mergeLocal：把本机（未登录时）的便利贴并入新账号，随后会上传。
  */
-export function switchOwner(owner: string, opts: { mergeLocal?: boolean } = {}) {
+export async function switchOwner(owner: string, opts: { mergeLocal?: boolean } = {}) {
+  await hydrateNotes()
   const s = useNotes.getState()
   if (s.owner === owner) return
-  save(keyFor(s.owner), { notes: s.notes, tombstones: s.tombstones, cursor: s.cursor } satisfies Persisted)
+  persistNow(s.owner, snapshotOf(s))
+  await flushSaves()
 
-  const next = loadOwner(owner)
+  const { data, saved } = await loadOwner(owner)
+  persisted.set(owner, saved)
+  const next: Persisted = { ...data, notes: [...data.notes] }
   if (opts.mergeLocal && owner !== LOCAL_OWNER) {
-    const local = s.owner === LOCAL_OWNER ? s : (readPersisted(LOCAL_OWNER) ?? emptyPersisted())
+    const local = s.owner === LOCAL_OWNER ? snapshotOf(s) : ((await readPersisted(LOCAL_OWNER)) ?? emptyPersisted())
     const existing = new Set(next.notes.map((n) => n.id))
     const offset = maxZ(next.notes)
     const now = Date.now()
@@ -366,46 +425,45 @@ export function switchOwner(owner: string, opts: { mergeLocal?: boolean } = {}) 
       // 本机的便利贴对这个账号来说都是新的：版本 0，等待上传
       next.notes.push({ ...n, z: n.z + offset, version: 0, dirty: true, updatedAt: Math.max(n.updatedAt, now) })
     }
-    if (local.notes.length) save(keyFor(LOCAL_OWNER), emptyPersisted())
+    if (local.notes.length) persistNow(LOCAL_OWNER, emptyPersisted())
   }
-  lastSaved = undefined
-  useNotes.setState({ ...next, owner, past: [], future: [], selectedId: null, editingId: null })
+  useNotes.setState({ ...next, owner, hydrated: true, past: [], future: [], selectedId: null, editingId: null })
 }
 
-// ---------- 持久化 ----------
+// ---------- 多个页面同时打开（多个标签页、插件浮窗和独立窗口） ----------
 
-let lastSaved: Note[] | undefined
-let lastSavedTombs: Tombstone[] | undefined
-let lastSavedCursor = -1
-useNotes.subscribe((s) => {
-  if (s.notes === lastSaved && s.tombstones === lastSavedTombs && s.cursor === lastSavedCursor) return
-  lastSaved = s.notes
-  lastSavedTombs = s.tombstones
-  lastSavedCursor = s.cursor
-  save(keyFor(s.owner), { notes: s.notes, tombstones: s.tombstones, cursor: s.cursor } satisfies Persisted)
-})
+const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('stickydo-notes') : null
 
-// 多个页面同时打开（插件浮窗和独立窗口、多个标签页）时，其他页面的修改实时同步过来
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
-    const s = useNotes.getState()
-    if (e.key !== keyFor(s.owner) || e.newValue == null) return
-    const p = readPersisted(s.owner)
-    if (!p) return
-    lastSaved = p.notes
-    lastSavedTombs = p.tombstones
-    lastSavedCursor = p.cursor
-    useNotes.setState((cur) => {
-      const has = (id: string | null) => id != null && p.notes.some((n) => n.id === id)
-      return {
-        ...p,
-        selectedId: has(cur.selectedId) ? cur.selectedId : null,
-        // 正在编辑的便利贴保持编辑状态，结束编辑时再写入
-        editingId: has(cur.editingId) ? cur.editingId : null,
-      }
-    })
+/** 其他页面保存后：重新读取存储。本页还有未保存的改动时，等保存完再读，避免覆盖 */
+async function reloadFromStorage() {
+  await flushSaves()
+  const s = useNotes.getState()
+  if (!s.hydrated) return
+  if (!samePersisted(persisted.get(s.owner), snapshotOf(s))) {
+    reloadPending = true
+    return
+  }
+  const p = await readPersisted(s.owner)
+  const cur = useNotes.getState()
+  if (!p || cur.owner !== s.owner) return
+  if (!samePersisted(persisted.get(cur.owner), snapshotOf(cur))) {
+    // 读取期间本页又改了：保存后再读一次
+    reloadPending = true
+    return
+  }
+  persisted.set(cur.owner, p)
+  const has = (id: string | null) => id != null && p.notes.some((n) => n.id === id)
+  useNotes.setState({
+    ...p,
+    selectedId: has(cur.selectedId) ? cur.selectedId : null,
+    // 正在编辑的便利贴保持编辑状态，结束编辑时再写入
+    editingId: has(cur.editingId) ? cur.editingId : null,
   })
 }
+
+channel?.addEventListener('message', (e: MessageEvent<{ owner?: string }>) => {
+  if (e.data?.owner === useNotes.getState().owner) void reloadFromStorage()
+})
 
 /** 便利贴第一行作为标题，用于提示条等场景 */
 export const noteTitle = (n: Note) => {
