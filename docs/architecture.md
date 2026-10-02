@@ -58,7 +58,7 @@
 | 命令面板 | cmdk |
 | 提示与撤销条 | sonner |
 | 拖拽 | `dnd-kit`（列表排序）+ `react-rnd`（白板中自由拖拽和缩放） |
-| 富文本 | Tiptap（支持 Markdown 快捷输入） |
+| 富文本 | Tiptap 3（StarterKit + 任务列表；`@tiptap/markdown` 用于旧便利贴迁移） |
 | 自然语言时间解析 | chrono-node + 自定义中文规则 |
 | 快捷键 | tinykeys |
 | 组件开发 | Storybook |
@@ -231,7 +231,7 @@ sticky-do/
 │   ├── extension/              # manifest.json、图标
 │   └── src/
 │       ├── api/                # OpenAPI 生成的类型（schema.d.ts）与客户端
-│       ├── sync/               # 本地数据库 + 同步引擎（后期可抽成共享包）
+│       ├── sync/               # 同步：合并规则（纯函数，有单元测试）+ 同步引擎（后期可抽成共享包）
 │       ├── design/             # 设计 token、主题
 │       ├── extension/          # 插件专用：浮窗尺寸、独立窗口
 │       ├── features/{notes,todos,boards,auth,capture}/

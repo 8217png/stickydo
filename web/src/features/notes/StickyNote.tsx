@@ -1,12 +1,14 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { Rnd } from 'react-rnd'
+import { EditorContent, useEditor } from '@tiptap/react'
 import { NOTE_COLORS, noteColorVar } from '../../design/colors'
 import { useSettings } from '../settings'
-import { type Note, useNotes } from './store'
+import { type Note, noteTilt, useNotes } from './store'
 import { deleteWithUndo } from './actions'
-import { handleMarkdownKey } from './markdownEditing'
-import { NoteMarkdown } from './NoteMarkdown'
+import { docIsEmpty, type NoteDoc, trimDoc } from './doc'
+import { noteExtensions } from './extensions'
+import { NoteRenderer, toggleTaskAt } from './NoteRenderer'
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 32, mass: 0.8 } as const
 
@@ -25,7 +27,7 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
   // 用户正按着拖动/缩放时关闭过渡，跟手；其余的位置和尺寸变化（自动排列、撤销）都平滑过渡
   const [interacting, setInteracting] = useState(false)
 
-  const rotate = lifted || !tiltOn ? 0 : note.tilt
+  const rotate = lifted || !tiltOn ? 0 : noteTilt(note.id)
 
   return (
     <Rnd
@@ -109,13 +111,13 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
             note={note}
             onDone={(content, snapshot) => {
               setEditing(null)
-              if (!content.trim()) {
+              if (docIsEmpty(content)) {
                 // 新建后没写内容：直接丢弃，不打扰用户；原本有内容被清空：按删除处理，可撤销
-                if (note.content.trim()) deleteWithUndo(note.id, snapshot)
+                if (!docIsEmpty(note.content)) deleteWithUndo(note.id, snapshot)
                 else discard(note.id)
                 return
               }
-              if (content !== note.content) {
+              if (JSON.stringify(content) !== JSON.stringify(trimDoc(note.content))) {
                 checkpoint(snapshot)
                 update(note.id, { content }, { record: false })
               }
@@ -132,60 +134,52 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
 function NoteContent({ note }: { note: Note }) {
   return (
     <div className="note-text note-text-clip h-full overflow-hidden px-4 pt-4 pb-3 select-none">
-      <NoteMarkdown
-        content={note.content}
-        onChange={(content) => useNotes.getState().update(note.id, { content })}
+      <NoteRenderer
+        doc={note.content}
+        onToggleTask={(path) => useNotes.getState().update(note.id, { content: toggleTaskAt(note.content, path) })}
       />
     </div>
   )
 }
 
-function NoteEditor({
-  note,
-  onDone,
-}: {
-  note: Note
-  onDone: (content: string, snapshot: Note[]) => void
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
+/**
+ * 原地编辑：Tiptap 所见即所得编辑器。Markdown 写法会即时变成格式（# 标题、- 列表、[] 待办、**粗体** 等）。
+ * Esc 或 Ctrl/⌘+Enter 结束编辑；点到别处也会结束。
+ */
+function NoteEditor({ note, onDone }: { note: Note; onDone: (content: NoteDoc, snapshot: Note[]) => void }) {
   // 进入编辑时的快照：编辑结束、内容确实变了才作为一步撤销记录
   const snapshot = useRef(useNotes.getState().notes)
-  const [value, setValue] = useState(note.content)
   const done = useRef(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-  }, [])
-
-  const finish = () => {
+  const finish = (doc: NoteDoc) => {
     if (done.current) return
     done.current = true
-    onDone(value, snapshot.current)
+    onDone(doc, snapshot.current)
   }
 
-  return (
-    <textarea
-      ref={ref}
-      spellCheck={false}
-      className="no-drag note-text note-editor block h-full w-full resize-none bg-transparent px-4 pt-4 pb-3 outline-none placeholder:text-note-ink-muted"
-      value={value}
-      placeholder="写点什么…  支持 Markdown"
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={finish}
-      onKeyDown={(e) => {
-        if (e.nativeEvent.isComposing) return
-        if (handleMarkdownKey(e)) {
-          e.preventDefault()
-          return
-        }
+  const editor = useEditor({
+    extensions: noteExtensions({ placeholder: '写点什么…' }),
+    content: note.content,
+    autofocus: 'end',
+    editorProps: {
+      attributes: { class: 'note-md note-editor outline-none', spellcheck: 'false' },
+      handleKeyDown: (view, e) => {
+        if (e.isComposing) return false
         if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
           e.preventDefault()
-          ref.current?.blur()
+          ;(view.dom as HTMLElement).blur()
+          return true
         }
-      }}
+        return false
+      },
+    },
+    onBlur: ({ editor }) => finish(trimDoc(editor.getJSON() as NoteDoc)),
+  })
+
+  return (
+    <EditorContent
+      editor={editor}
+      className="no-drag note-text h-full cursor-text overflow-y-auto px-4 pt-4 pb-3"
+      onPointerDown={(e) => e.stopPropagation()}
     />
   )
 }

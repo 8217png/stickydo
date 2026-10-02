@@ -11,18 +11,23 @@
     "build:extension": "tsc -b && vite build --mode extension",
     "gen:api": "npx -y -p openapi-typescript@7.13.0 -p typescript@5.9.3 openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build -o storybook-static"
+    "build-storybook": "storybook build -o storybook-static",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@tiptap/core": "^3.31.4",
+    "@tiptap/extension-list": "^3.31.4",
+    "@tiptap/extensions": "^3.31.4",
+    "@tiptap/markdown": "^3.31.4",
+    "@tiptap/pm": "^3.31.4",
+    "@tiptap/react": "^3.31.4",
+    "@tiptap/starter-kit": "^3.31.4",
     "motion": "^13.4.6",
     "openapi-fetch": "^0.17.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-markdown": "^10.1.0",
     "react-rnd": "^10.5.3",
     "react-router": "^8.4.0",
-    "remark-breaks": "^4.0.0",
-    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.8",
     "zustand": "^5.0.15"
   },
@@ -36,6 +41,7 @@
     "storybook": "^10.6.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.1"
+    "vite": "^8.3.1",
+    "vitest": "^5.0.3"
   }
 }

@@ -15,6 +15,7 @@
   --chrome-hover: rgb(60 50 30 / 0.06);
   --focus-ring: #6b8afd;
   --overdue: #e0893a;
+  --ok: #4f9a6c;
 
   /* 表单与按钮 */
   --accent: #2b2a26;
@@ -78,6 +79,7 @@
   --chrome-hover: rgb(255 248 230 / 0.07);
   --focus-ring: #8aa2ff;
   --overdue: #e6a066;
+  --ok: #7cc49a;
   /* 表单与按钮 */
   --accent: #ece7dc;
   --accent-ink: #1c1b19;
@@ -124,6 +126,8 @@
     --chrome-hover: rgb(255 248 230 / 0.07);
     --focus-ring: #8aa2ff;
     --overdue: #e6a066;
+    --ok: #7cc49a;
+  --ok: #7cc49a;
     /* 表单与按钮 */
     --accent: #ece7dc;
     --accent-ink: #1c1b19;

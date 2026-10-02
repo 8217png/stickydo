@@ -161,6 +161,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sync/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 拉取自 since 以来服务端变化的便利贴（含已删除的） */
+        get: operations["syncPull"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 上传本地改过的便利贴，逐条比较新旧
+         * @description 对每条改动：服务端自客户端上次同步后没变（base_version 相同），或客户端的
+         *     updated_at 更晚，则写入（applied）；否则服务端更新（stale），返回服务端当前记录。
+         */
+        post: operations["syncPush"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -249,6 +287,87 @@ export interface components {
             last_seen_at: string;
             /** @description 是否是发起请求的这台设备 */
             current: boolean;
+        };
+        /** @enum {string} */
+        NoteColor: "lemon" | "peach" | "blossom" | "lavender" | "sky" | "mint" | "sand" | "paper";
+        /** @description 便利贴内容（整条，不是补丁） */
+        NoteData: {
+            /** @description Tiptap 文档 JSON（type 为 doc） */
+            content: {
+                [key: string]: unknown;
+            };
+            color: components["schemas"]["NoteColor"];
+            /** Format: double */
+            pos_x: number;
+            /** Format: double */
+            pos_y: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            height: number;
+            /** Format: int32 */
+            z_index: number;
+            pinned: boolean;
+            archived: boolean;
+        };
+        Note: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            version: number;
+            /**
+             * Format: date-time
+             * @description 最后一次编辑的时间
+             */
+            updated_at: string;
+            /** Format: date-time */
+            deleted_at?: string | null;
+            data: components["schemas"]["NoteData"];
+        };
+        NoteChange: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: int64
+             * @description 本地上次同步时的服务端版本，从未同步过为 0
+             */
+            base_version: number;
+            /**
+             * Format: date-time
+             * @description 本地最后一次编辑的时间
+             */
+            updated_at: string;
+            deleted: boolean;
+            data?: components["schemas"]["NoteData"];
+        };
+        SyncPullResponse: {
+            notes: components["schemas"]["Note"][];
+            /**
+             * Format: int64
+             * @description 下次 pull 用的 since
+             */
+            server_version: number;
+            /** @description 还有更多变化，接着用 server_version 拉取 */
+            has_more: boolean;
+        };
+        SyncPushRequest: {
+            notes: components["schemas"]["NoteChange"][];
+        };
+        SyncPushResult: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description applied 已写入；stale 服务端更新，用 note 覆盖本地；invalid 数据不合规，丢弃本地改动
+             * @enum {string}
+             */
+            status: "applied" | "stale" | "invalid";
+            note?: components["schemas"]["Note"];
+            reason?: string;
+        };
+        SyncPushResponse: {
+            results: components["schemas"]["SyncPushResult"][];
+            /** Format: int64 */
+            server_version: number;
         };
     };
     responses: {
@@ -476,6 +595,58 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+        };
+    };
+    syncPull: {
+        parameters: {
+            query: {
+                /** @description 上次同步得到的 server_version，首次为 0 */
+                since: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncPullResponse"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    syncPush: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncPushRequest"];
+            };
+        };
+        responses: {
+            /** @description 每条改动的处理结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncPushResponse"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
 }
