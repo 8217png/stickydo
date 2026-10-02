@@ -9,6 +9,7 @@ import { deleteWithUndo } from './actions'
 import { boardOfNote, moveNoteWithUndo } from '../boards/actions'
 import { cleanDoc, docIsEmpty, type NoteDoc, trimDoc } from './doc'
 import { NoteRenderer, toggleTaskAt } from './NoteRenderer'
+import { useLongPress } from './useLongPress'
 
 /** 编辑器（Tiptap）单独打包，第一次编辑前加载；加载完之前显示原来的内容，看不出切换 */
 export const loadNoteEditor = () => import('./NoteEditor')
@@ -95,6 +96,9 @@ export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
   // 用户正按着拖动/缩放时关闭过渡，跟手；其余的位置和尺寸变化（自动排列、撤销）都平滑过渡
   const [interacting, setInteracting] = useState(false)
 
+  // 长按（不移动）2 秒进入编辑，等同于双击
+  const longPress = useLongPress(() => setEditing(note.id), !editing)
+
   const rotate = lifted || !tiltOn ? 0 : noteTilt(note.id)
 
   return (
@@ -102,6 +106,7 @@ export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
       className="note-shell"
       data-note={note.id}
       data-selected={selected}
+      data-editing={editing}
       position={{ x: note.x, y: note.y }}
       size={{ width: note.w, height: note.h }}
       style={{
@@ -173,15 +178,18 @@ export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
         layoutId={morph ? `paper-${note.id}` : undefined}
         className="note-paper h-full w-full"
         data-lifted={lifted}
+        data-editing={editing}
         style={{
           backgroundColor: noteColorVar(note.color),
           outline: selected ? '2px solid var(--focus-ring)' : '2px solid transparent',
           outlineOffset: 3,
         }}
         initial={{ scale: 0.6, opacity: 0, rotate: rotate - 8, y: -12 }}
-        animate={{ scale: lifted ? 1.035 : 1, opacity: 1, rotate, y: 0 }}
+        // 触屏长按满 2 秒：再放大一点，提示松手就进入编辑
+        animate={{ scale: longPress.armed ? 1.07 : lifted ? 1.035 : 1, opacity: 1, rotate, y: 0 }}
         exit={{ scale: 0.85, opacity: 0, transition: { duration: 0.18, ease: 'easeIn' } }}
         transition={SPRING}
+        onPointerDown={longPress.onPointerDown}
         onDoubleClick={(e) => {
           e.stopPropagation()
           if (!editing) setEditing(note.id)
@@ -201,6 +209,7 @@ export const ListNote = memo(function ListNote({ note, morph, animateLayout }: P
   const { selected, editing } = useNoteState(note.id)
   const [hovered, setHovered] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const longPress = useLongPress(() => useNotes.getState().setEditing(note.id), !editing)
   useEffect(() => {
     if (editing) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [editing])
@@ -224,12 +233,15 @@ export const ListNote = memo(function ListNote({ note, morph, animateLayout }: P
       <motion.div
         layoutId={morph ? `paper-${note.id}` : undefined}
         className="note-paper w-full"
+        data-editing={editing}
+        animate={{ scale: longPress.armed ? 1.03 : 1 }}
         style={{
           backgroundColor: noteColorVar(note.color),
           outline: selected ? '2px solid var(--focus-ring)' : '2px solid transparent',
           outlineOffset: 3,
         }}
         transition={SPRING}
+        onPointerDown={longPress.onPointerDown}
         onDoubleClick={(e) => {
           e.stopPropagation()
           if (!editing) useNotes.getState().setEditing(note.id)

@@ -69,6 +69,18 @@ body {
     box-shadow var(--dur-base) var(--ease-out),
     background-color var(--dur-slow) var(--ease-out);
 }
+/*
+ * 触屏：白板上的便利贴，手指滑动是拖动便利贴（不是滚动白板），按住是长按编辑。关掉浏览器自己的
+ * 滑动 / 缩放手势和长按菜单，iOS 才不会中途接管这次触摸（docs/frontend-design.md §2.2）。
+ * 正在编辑时恢复，编辑器里可以滚动、选字。
+ */
+.note-shell:not([data-editing='true']) {
+  touch-action: none;
+}
+.note-paper:not([data-editing='true']) {
+  -webkit-touch-callout: none;
+}
+
 .note-paper[data-lifted='true'] {
   box-shadow: var(--shadow-note-lift);
 }
