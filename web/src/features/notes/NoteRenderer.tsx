@@ -89,6 +89,24 @@ function renderNode(node: JSONContent, path: number[], toggle: Toggle): ReactNod
           <code>{(node.content ?? []).map((t) => t.text ?? '').join('')}</code>
         </pre>
       )
+    case 'table':
+      return (
+        <table key={key}>
+          <tbody>{kids()}</tbody>
+        </table>
+      )
+    case 'tableRow':
+      return <tr key={key}>{kids()}</tr>
+    case 'tableHeader':
+    case 'tableCell': {
+      const Cell = node.type === 'tableHeader' ? 'th' : 'td'
+      const span = (v: unknown) => (Number(v) > 1 ? Number(v) : undefined)
+      return (
+        <Cell key={key} colSpan={span(node.attrs?.colspan)} rowSpan={span(node.attrs?.rowspan)}>
+          {kids()}
+        </Cell>
+      )
+    }
     case 'horizontalRule':
       return <hr key={key} />
     case 'hardBreak':

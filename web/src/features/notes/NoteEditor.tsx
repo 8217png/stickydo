@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { type Note, type Snapshot, snapshotNow } from './store'
-import { cleanDoc, type NoteDoc, trimDoc } from './doc'
+import { cleanDoc, hasMarkdownTable, type NoteDoc, trimDoc } from './doc'
+import { markdownToDoc } from './markdown'
 import { noteExtensions } from './extensions'
 
 /**
@@ -49,6 +50,16 @@ export default function NoteEditor({
     },
     editorProps: {
       attributes: { class: 'note-md note-editor outline-none', spellcheck: 'false' },
+      // 粘贴带表格的 Markdown 文字（例如从别的笔记软件、AI 回答里复制）：按 Markdown 解析，表格直接变成表格
+      handlePaste: (_view, e) => {
+        const text = e.clipboardData?.getData('text/plain')
+        if (!text || !hasMarkdownTable(text) || !editor) return false
+        // 在表格里粘贴时按普通文字处理（表格不能套表格）
+        if (editor.isActive('table')) return false
+        const doc = markdownToDoc(text)
+        editor.commands.insertContent(doc.content ?? [])
+        return true
+      },
       handleKeyDown: (view, e) => {
         if (e.isComposing) return false
         if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {

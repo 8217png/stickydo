@@ -203,17 +203,34 @@ body {
   border-top: 1px dashed var(--note-ink-muted);
   opacity: 0.6;
 }
+/* 表格：铺满便利贴宽度、列宽平均，长文字在格子里换行 */
 .note-md table {
+  width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12.5px;
+  line-height: 1.45;
 }
 .note-md th,
 .note-md td {
-  padding: 2px 6px;
-  border: 1px solid rgb(0 0 0 / 0.12);
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--note-ink) 16%, transparent);
   text-align: left;
+  vertical-align: top;
 }
-.note-md th { font-weight: 600; }
+.note-md th {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--note-ink) 5%, transparent);
+}
+.note-md :is(th, td) p {
+  min-height: 1.45em;
+  margin: 0;
+  font-weight: inherit;
+}
+/* 编辑时选中的单元格 */
+.note-editor :is(th, td).selectedCell {
+  background: color-mix(in srgb, var(--focus-ring) 18%, transparent);
+}
 
 /* 任务列表：可点击的圆角复选框（显示状态） */
 .note-md li.task-list-item {

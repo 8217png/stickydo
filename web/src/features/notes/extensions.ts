@@ -1,8 +1,11 @@
-import type { AnyExtension } from '@tiptap/core'
+import { type AnyExtension, Extension, type JSONContent } from '@tiptap/core'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
+import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
+import { TextSelection } from '@tiptap/pm/state'
 import { Placeholder } from '@tiptap/extensions'
 import StarterKit from '@tiptap/starter-kit'
 import { dueFromAttr, formatDue, PRIORITY_LABEL, todoMeta } from '@stickydo/core/capture'
+import { markdownTableRow } from '@stickydo/core/notes'
 
 /**
  * 待办项：在 Tiptap 的 taskItem 上加时间、优先级、标签（docs/architecture.md「待办」）。
@@ -45,6 +48,49 @@ const TodoItem = TaskItem.extend({
 })
 
 /**
+ * Markdown 写法的表格：在 `| 姓名 | 电话 |` 这样一行的末尾回车，这一行变成表头，下面接一行空的，
+ * 光标移到第一个格子。之后 Tab / Shift+Tab 在格子之间移动，在最后一格按 Tab 加一行。
+ * 只在顶层段落里生效（列表、引用、表格里不变）。
+ */
+const MarkdownTable = Extension.create({
+  name: 'markdownTable',
+  priority: 200,
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { $from, empty } = editor.state.selection
+        const para = $from.parent
+        if (!empty || $from.depth !== 1 || para.type.name !== 'paragraph' || $from.parentOffset !== para.content.size) return false
+        const cells = markdownTableRow(para.textContent)
+        if (!cells) return false
+        const cell = (type: string, text: string): JSONContent => ({
+          type,
+          content: [text ? { type: 'paragraph', content: [{ type: 'text', text }] } : { type: 'paragraph' }],
+        })
+        const table: JSONContent = {
+          type: 'table',
+          content: [
+            { type: 'tableRow', content: cells.map((c) => cell('tableHeader', c)) },
+            { type: 'tableRow', content: cells.map(() => cell('tableCell', '')) },
+          ],
+        }
+        const start = $from.before()
+        return editor
+          .chain()
+          .insertContentAt({ from: start, to: $from.after() }, table)
+          .command(({ tr }) => {
+            // 第一行（表头）之后：进入第二行 → 第一个格子 → 格子里的段落
+            const header = tr.doc.nodeAt(start)?.firstChild
+            if (header) tr.setSelection(TextSelection.create(tr.doc, start + 1 + header.nodeSize + 3))
+            return true
+          })
+          .run()
+      },
+    }
+  },
+})
+
+/**
  * 便利贴编辑器的 Tiptap 扩展。存储格式是 Tiptap JSON（docs/architecture.md §4）。
  * StarterKit 自带 Markdown 快捷输入：# 标题、- 列表、1. 有序列表、> 引用、``` 代码、
  * **粗体**、*斜体*、~~删除线~~；TaskItem 支持行首输入 [] 或 [ ] 加空格生成待办。
@@ -62,6 +108,11 @@ export function noteExtensions(opts: { placeholder?: string } = {}): AnyExtensio
     }),
     TaskList,
     TodoItem.configure({ nested: true }),
+    Table.configure({ resizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    MarkdownTable,
     ...(opts.placeholder ? [Placeholder.configure({ placeholder: opts.placeholder })] : []),
   ]
 }
