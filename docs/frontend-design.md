@@ -141,4 +141,4 @@
 
 ## 5. 设计 Token
 
-颜色、阴影、圆角、间距、字体和动效时长统一定义为 CSS 变量，并映射到 Tailwind 主题（放在 `web/src/design/` 下）。后期做 RN 或原生端时，从同一份 token 导出，保证多端风格一致。
+颜色、阴影、圆角、间距、字体和动效时长统一定义为 CSS 变量，并映射到 Tailwind 主题（放在 `web/src/design/` 下）。移动端用 React Native，P0 起 token 以 `packages/core` 中的 TS 常量为源头，Web 和移动端共用，保证多端风格一致。

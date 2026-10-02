@@ -72,12 +72,23 @@
 - MV3 默认 CSP 禁止内联脚本和远程代码：首帧脚本放在 `public/boot.js`，不加载在线字体。
 - 存储：与 Web 相同，用插件源下的 IndexedDB（Dexie）；浮窗与独立窗口通过 BroadcastChannel 实时同步。登录后的同步见 E2。
 
-### 移动端（后期）
+### 移动端（后期）：React Native (Expo)
 
-- **React Native (Expo)**：可以复用 API 客户端、同步逻辑、类型定义和设计 token。
-- **原生开发（Kotlin + Swift）**：原生体验和 Widget 能力更好。
+已决定用 React Native (Expo) 开发 Android 和 iOS（2026-10-02）。与 Web 共用一份与平台无关的代码 `packages/core`：
 
-同步协议与平台无关，两条路线都走得通（待决，见 [roadmap.md](roadmap.md)）。
+| 放进 `packages/core` | 说明 |
+|---|---|
+| API 类型与客户端 | `openapi-typescript` 生成的类型 + `openapi-fetch`，Token 存取通过注入的接口完成 |
+| 同步 | 合并规则（`sync/merge.ts`，纯函数）与同步引擎；“何时同步”的触发（页面可见、网络恢复）由各端注入 |
+| 存储接口 | `NotesRepo` 接口与保存队列（`storage/saveQueue.ts`）；Web 实现用 IndexedDB，移动端用 `expo-sqlite` |
+| 正文 | Tiptap JSON 的读写与纯文本 / 标题提取（`features/notes/doc.ts`） |
+| 设计 token | 颜色、圆角、间距、动效时长以 TS 常量为源头，Web 生成 CSS 变量，移动端直接使用 |
+
+各端各自实现的部分：界面（Web 用 DOM + Tailwind，移动端用 RN 组件）、本地存储、安全存储 Token（移动端用 `expo-secure-store`）、桌面小组件。
+
+- **编辑器**：Tiptap 依赖 DOM，移动端无法直接使用。查看时用 RN 组件直接渲染 Tiptap JSON（与 Web 的 `NoteRenderer` 同一套规则）；编辑时用基于 Tiptap 的 WebView 编辑器（如 10tap-editor），正文格式与 Web 完全一致。
+- **白板**：手机屏幕小，默认用列表 / 网格视图；白板模式用 `react-native-gesture-handler` + `reanimated` 实现拖动和缩放。
+- **小组件**：Expo 通过原生模块（config plugin）实现，数据从本地 SQLite 读取。
 
 ## 4. 数据模型
 
@@ -236,7 +247,7 @@ sticky-do/
 │   ├── extension/              # manifest.json、图标
 │   └── src/
 │       ├── api/                # OpenAPI 生成的类型（schema.d.ts）与客户端
-│       ├── sync/               # 同步：合并规则（纯函数，有单元测试）+ 同步引擎（后期可抽成共享包）
+│       ├── sync/               # 同步：合并规则（纯函数，有单元测试）+ 同步引擎（将抽到 packages/core）
 │       ├── storage/            # 本地存储：IndexedDB（Dexie），退路 localStorage
 │       ├── design/             # 设计 token、主题
 │       ├── extension/          # 插件专用：浮窗尺寸、独立窗口
