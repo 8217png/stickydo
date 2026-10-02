@@ -9,7 +9,7 @@ import { NOTE_SIZES, noteBoardId, noteTitle, sortedBoards, useNotes } from '../n
 import { collectTags, collectTodos } from '@stickydo/core/capture'
 import { noteColorVar } from '../../design/colors'
 import { boardName, createBoardAndOpen, moveNoteWithUndo, openNote } from '../boards/actions'
-import { setView, toggleSidebar, useView } from '../view'
+import { setBoardLayout, setView, toggleSidebar, useBoardLayout, useView } from '../view'
 import { applyNoteSize } from '../notes/actions'
 import { nextNotePosition } from '../notes/viewport'
 import { useSettings } from '../settings'
@@ -43,6 +43,7 @@ function Palette({ onHelp }: { onHelp: () => void }) {
   const selectedId = useNotes((s) => s.selectedId)
   const view = useView((s) => s.view)
   const onBoard = view.kind === 'board'
+  const layout = useBoardLayout((s) => s.layout)
   const { undo, redo, create, setEditing } = useNotes.getState()
   const { setTheme, setTilt, tilt } = useSettings()
   const query = search.trim()
@@ -197,7 +198,16 @@ function Palette({ onHelp }: { onHelp: () => void }) {
 
             {onBoard && (
             <Command.Group heading="白板">
-              {NOTE_SIZES.map((s) => (
+              {layout === 'board' ? (
+                <Item value="列表视图 list view 切换" onSelect={run(() => setBoardLayout('list'))} shortcut="V" icon={<ListIcon />}>
+                  切换为列表视图
+                </Item>
+              ) : (
+                <Item value="白板视图 board view 切换" onSelect={run(() => setBoardLayout('board'))} shortcut="V" icon={<GridIcon />}>
+                  切换为白板视图
+                </Item>
+              )}
+              {layout === 'board' && NOTE_SIZES.map((s) => (
                 <Item key={s.key} value={`统一大小 ${s.label} 自动排列 size ${s.key}`} onSelect={run(() => applyNoteSize(s.key))} shortcut={s.key === 's' ? '-' : s.key === 'l' ? '=' : undefined} icon={<GridIcon />}>
                   全部统一为「{s.label}」并自动排列
                 </Item>
@@ -364,3 +374,4 @@ const CalendarIcon = () => <Svg><rect x="2" y="3" width="12" height="11" rx="2" 
 const InboxIcon = () => <Svg><path d="M2 9.5l1.6-5.2A1 1 0 014.6 3.5h6.8a1 1 0 011 .8L14 9.5V12a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12z" /><path d="M2 9.5h3.5l1 1.5h3l1-1.5H14" /></Svg>
 const PanelIcon = () => <Svg><rect x="2" y="3" width="12" height="10" rx="2" /><path d="M6 3v10" /></Svg>
 const MoveIcon = () => <Svg><path d="M2.5 8h9M9 5l3 3-3 3" /><path d="M13.5 3v10" /></Svg>
+const ListIcon = () => <Svg><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" /></Svg>

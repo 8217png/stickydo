@@ -6,7 +6,7 @@ import { openStandaloneWindow } from '../extension/standaloneWindow'
 import { isExtension, surface } from '../extension/surface'
 import { AccountMenu } from './AccountMenu'
 import { openCapture, openPalette } from '../features/capture/state'
-import { toggleSidebar, useView } from '../features/view'
+import { toggleSidebar, useBoardLayout, useView } from '../features/view'
 import { noteColorVar } from '../design/colors'
 
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' }
@@ -20,6 +20,9 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
   const view = useView((s) => s.view)
   const sidebarOpen = useView((s) => s.sidebarOpen)
   const onBoard = view.kind === 'board'
+  // 统一大小只对白板有意义
+  const layout = useBoardLayout((s) => s.layout)
+  const freeform = onBoard && layout === 'board'
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-[9000] flex items-center justify-between p-3">
@@ -42,7 +45,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
-        {onBoard && (<>
+        {freeform && (<>
         <div className="flex items-center gap-0.5" role="group" aria-label="统一大小并自动排列">
           <svg className="mx-1 text-ink-faint max-sm:hidden" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
             <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" />
@@ -82,7 +85,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
         <IconButton title="撤销（Ctrl+Z）" disabled={!canUndo} onClick={undo}>
           <path d="M5.5 4L3 6.5 5.5 9M3.5 6.5h6a3.5 3.5 0 010 7H8" />
         </IconButton>
-        <IconButton title="重做（Ctrl+Shift+Z）" disabled={!canRedo} onClick={redo} className="max-[420px]:hidden">
+        <IconButton title="重做（Ctrl+Shift+Z）" disabled={!canRedo} onClick={redo} className="max-sm:hidden">
           <path d="M10.5 4L13 6.5 10.5 9M12.5 6.5h-6a3.5 3.5 0 000 7H8" />
         </IconButton>
         <span className="mx-1 h-4 w-px bg-chrome-border max-[420px]:hidden" />
