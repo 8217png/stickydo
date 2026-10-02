@@ -38,6 +38,8 @@
 | 数据库访问 | `sqlc` + `pgx` |
 | 数据库迁移 | `goose` |
 | 实时推送 | `coder/websocket`，多实例时通过 Redis Pub/Sub 广播 |
+| 请求校验 | `kin-openapi`（经 `oapi-codegen/nethttp-middleware`）：字段校验和“哪些接口需要认证”都由 OpenAPI 决定 |
+| 认证 | `golang-jwt`（HS256）、`x/crypto/argon2`（argon2id） |
 | 配置与日志 | `envconfig`、`log/slog` |
 | 测试 | `testcontainers-go`（连接真实的 Postgres） |
 
@@ -46,6 +48,8 @@
 | 用途 | 选型 |
 |---|---|
 | 构建 | Vite + TypeScript |
+| API 客户端 | `openapi-fetch` + `openapi-typescript` 生成的类型 |
+| 路由 | React Router |
 | 服务端状态 | TanStack Query |
 | 本地状态与撤销栈 | Zustand（撤销通过中间件实现） |
 | 本地存储 | Dexie（IndexedDB）：离线缓存与待推送队列 |
@@ -148,7 +152,22 @@ WS   /api/v1/ws          服务端通知“有新版本”，客户端收到后�
 
 除同步接口外，也提供常规的 REST CRUD 接口（`/notes`、`/todos`、`/boards`、`/search`），方便调试和第三方集成。
 
-## 6. 项目目录（Monorepo）
+## 6. 认证（M1 已实现）
+
+接口见 `api/openapi.yaml`（`/auth/*`、`/me/*`），实现在 `server/internal/service/auth.go`。
+
+- **密码**：argon2id（19 MiB、2 次迭代、1 线程，参数写在哈希串里，以后可调高）。未注册的邮箱登录也照样算一次哈希，使“邮箱不存在”和“密码错误”的耗时与提示一致，避免探测已注册邮箱。
+- **Access Token**：JWT（HS256），15 分钟，内容是用户 ID 和设备 ID。每个需要认证的请求都会确认设备未被吊销，所以退出登录、吊销设备、改密码后其他设备退出都**立即生效**。
+- **Refresh Token**：256 位随机串，数据库只存 SHA-256；按设备记录，30 天，每次刷新都轮换并顺延。
+  - **重用检测**：已轮换掉的旧 Token 在 60 秒后再被使用，视为泄露，吊销整台设备。
+  - **60 秒宽限**：同一浏览器的多个标签页可能同时刷新，宽限期内旧 Token 只是失败、不吊销；客户端收到 401 后从 localStorage 读取别的标签页刚拿到的新 Token 再试。
+- **设备**：登录即创建一条设备记录（名称、平台）；`GET /me/devices` 列出，`DELETE /me/devices/{id}` 让某台设备退出。改密码时当前设备保持登录，其他设备全部退出。
+- **限流**：注册、登录、刷新按 IP 限流（每 6 秒补 1 次，最多连续 10 次），超出返回 429 + `Retry-After`。M1 是单实例内存实现，多实例时换成 Redis。部署在反向代理后面时打开 `STICKYDO_TRUST_PROXY` 才信任 `X-Forwarded-For`。
+- **错误格式**：统一 `application/problem+json`（RFC 9457），`code` 给程序判断（如 `token_expired` 表示该刷新了），`fields` 一次给出所有字段错误。
+- **Web 客户端**（`web/src/features/auth/session.ts`）：Refresh Token 与用户信息存 localStorage，Access Token 只放内存；请求前剩余不足 30 秒就先刷新（同一时间只发一个刷新请求），遇到 401 刷新后重试一次；多个标签页通过 `storage` 事件共享登录状态，一处退出处处退出。
+- **账号是可选的**：不登录也能完整使用白板（数据在本机）；Chrome 插件目前完全单机，不显示账号入口。
+
+## 7. 项目目录（Monorepo）
 
 ```
 sticky-do/
@@ -157,28 +176,40 @@ sticky-do/
 ├── server/                     # Go
 │   ├── cmd/server/main.go
 │   ├── internal/
-│   │   ├── config/
-│   │   ├── http/               # handler、中间件（认证、日志、限流、CORS）
-│   │   ├── service/            # 业务逻辑：note、todo、board、sync、auth
+│   │   ├── config/             # 环境变量（前缀 STICKYDO_）
+│   │   ├── apperr/             # 业务错误 → problem+json
+│   │   ├── auth/               # 密码哈希、JWT、Refresh Token
+│   │   ├── db/                 # 连接池、goose 迁移
+│   │   ├── http/               # 路由、中间件（日志、CORS、限流、OpenAPI 校验与认证）、handler
+│   │   │   └── api/            # oapi-codegen 生成代码
+│   │   ├── service/            # 业务逻辑：auth（M1），note、todo、board、sync（M2 起）
 │   │   ├── repo/               # sqlc 生成代码
-│   │   ├── realtime/           # WebSocket hub
+│   │   ├── realtime/           # WebSocket hub（M5）
 │   │   └── jobs/               # 回收站清理、提醒调度（二期）
-│   ├── migrations/
-│   └── queries/                # sqlc 使用的 .sql 文件
+│   ├── migrations/             # goose 迁移（嵌入二进制，启动时执行）
+│   ├── queries/                # sqlc 使用的 .sql 文件
+│   ├── tools/                  # 代码生成工具（sqlc、oapi-codegen、goose）的独立 go.mod
+│   └── Dockerfile
 ├── web/                        # React（Web 与 Chrome 插件共用）
 │   ├── index.html              # Web 入口
 │   ├── popup.html              # Chrome 插件入口（浮窗 / 独立窗口）
 │   ├── extension/              # manifest.json、图标
 │   └── src/
-│       ├── api/                # 根据 OpenAPI 生成的客户端
+│       ├── api/                # OpenAPI 生成的类型（schema.d.ts）与客户端
 │       ├── sync/               # 本地数据库 + 同步引擎（后期可抽成共享包）
 │       ├── design/             # 设计 token、主题
 │       ├── extension/          # 插件专用：浮窗尺寸、独立窗口
 │       ├── features/{notes,todos,boards,auth,capture}/
-│       ├── components/
-│       └── routes/
+│       ├── components/         # 含 ui/ 基础组件（Storybook：npm run storybook）
+│       └── routes/             # 白板页、登录 / 注册页
 ├── docs/                       # 设计文档
 ├── deploy/
-│   └── docker-compose.yml      # postgres + redis + server + web
-└── Makefile                    # make gen / make dev / make test
+│   └── docker-compose.yml      # postgres + redis + server
+└── Makefile                    # make gen / db / dev / web / test / up
 ```
+
+### 代码生成
+
+- `make gen`：由 `api/openapi.yaml` 生成 Go（oapi-codegen）与 TS 类型（openapi-typescript），由 `migrations/` + `queries/` 生成 sqlc 代码。生成的文件都提交到仓库。
+- Go 工具放在 `server/tools/go.mod`（`go tool -modfile=tools/go.mod ...`），不污染服务端依赖。
+- openapi-typescript 依赖 TypeScript 5 的编译器 API，而前端用 TypeScript 7（没有 JS API），所以 `npm run gen:api` 通过 `npx` 临时使用固定版本的 openapi-typescript + TypeScript 5。

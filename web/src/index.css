@@ -12,6 +12,15 @@
   --color-focus: var(--focus-ring);
   --color-note-ink: var(--note-ink);
   --color-note-ink-muted: var(--note-ink-muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-hover: var(--accent-hover);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-field: var(--field-bg);
+  --color-field-border: var(--field-border);
+  --color-field-border-hover: var(--field-border-hover);
+  --color-surface: var(--surface);
   --font-sans: var(--font-ui);
   --radius-ui: var(--radius-ui);
   --radius-note: var(--radius-note);

@@ -8,25 +8,32 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "build:extension": "tsc -b && vite build --mode extension"
+    "build:extension": "tsc -b && vite build --mode extension",
+    "gen:api": "npx -y -p openapi-typescript@7.13.0 -p typescript@5.9.3 openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "dependencies": {
     "motion": "^13.4.6",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "react-rnd": "^10.5.3",
+    "react-router": "^8.4.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.8",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@storybook/react-vite": "^10.6.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/chrome": "^0.3.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "storybook": "^10.6.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.1"

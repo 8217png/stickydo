@@ -2,19 +2,28 @@
 
 便利贴 + 待办事项应用。第一期为 Go 服务端 + React Web 前端，后期支持 Android 与 iOS。
 
-> 项目处于 M0 视觉原型阶段，设计文档见 [docs/](docs/README.md)。
+> 当前进度：M1（服务端脚手架、认证、注册登录）已完成，设计文档见 [docs/](docs/README.md)。
 
-## 运行 M0 原型
+## 本地开发
 
-只有白板和便利贴的单页原型（数据存在浏览器 localStorage），用来打磨拖拽、配色和动效的手感。
+需要 Go 1.26+、Node 22+、Docker。
 
 ```bash
-cd web
-npm install
-npm run dev      # http://localhost:5173
+make db      # 启动 PostgreSQL + Redis（Docker）
+make dev     # 启动 API 服务 :8080（启动时自动执行数据库迁移）
+make web     # 另开终端：启动前端 :5173，/api 自动代理到 :8080
 ```
 
-双击空白处新建便利贴，按 `?` 查看全部快捷键。
+打开 http://localhost:5173 。不登录也能用白板（数据保存在浏览器里）；右上角可以注册、登录。
+
+| 命令 | 作用 |
+|---|---|
+| `make gen` | 改了 `api/openapi.yaml` 或 SQL 之后，重新生成 Go / TS 代码 |
+| `make test` | 服务端测试（含连真实 PostgreSQL 的集成测试，需要 Docker）+ 前端类型检查 |
+| `make up` | 用 docker compose 启动全部服务（PostgreSQL、Redis、API） |
+| `cd web && npm run storybook` | 基础组件和页面的 Storybook（:6006） |
+
+服务端配置用环境变量（前缀 `STICKYDO_`），见 `server/internal/config/config.go`。部署时务必设置随机生成的 `STICKYDO_JWT_SECRET`（至少 32 个字符）。
 
 ## Chrome 插件（单机版）
 
