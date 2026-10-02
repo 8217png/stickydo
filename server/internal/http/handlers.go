@@ -18,6 +18,7 @@ import (
 type handlers struct {
 	pool *pgxpool.Pool
 	auth *service.Auth
+	sync *service.Sync
 }
 
 var _ api.StrictServerInterface = (*handlers)(nil)

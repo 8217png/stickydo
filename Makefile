@@ -34,7 +34,7 @@ web:
 test: test-server test-web
 
 test-server:
-	cd server && go vet ./... && go test -race ./...
+	cd server && go vet ./... && STICKYDO_REQUIRE_DOCKER=1 go test -race ./...
 
 test-web:
 	cd web && npm run typecheck

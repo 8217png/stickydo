@@ -26,6 +26,7 @@ const apiPrefix = "/api/v1"
 type Deps struct {
 	Pool        *pgxpool.Pool
 	Auth        *service.Auth
+	Sync        *service.Sync
 	Log         *slog.Logger
 	CORSOrigins []string
 	TrustProxy  bool
@@ -62,7 +63,8 @@ func New(d Deps) (http.Handler, error) {
 		ExposedHeaders: []string{"Retry-After", "X-Request-Id"},
 		MaxAge:         600,
 	}))
-	r.Use(limitBody(1 << 20))
+	// 请求体上限：同步推送一次最多 500 条便利贴，放宽到 16 MB；其他接口 1 MB
+	r.Use(limitBodyByPath(1<<20, map[string]int64{apiPrefix + "/sync/push": 16 << 20}))
 	r.Use(withPrincipalSlot)
 
 	every, burst := d.AuthRateEvery, d.AuthRateBurst
@@ -88,7 +90,7 @@ func New(d Deps) (http.Handler, error) {
 		},
 	})
 
-	strict := api.NewStrictHandlerWithOptions(&handlers{pool: d.Pool, auth: d.Auth}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&handlers{pool: d.Pool, auth: d.Auth, sync: d.Sync}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			problem(w, r, apperr.New(http.StatusBadRequest, apperr.BadRequest, "请求格式不正确"))
 		},

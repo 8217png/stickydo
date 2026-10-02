@@ -96,10 +96,14 @@ func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// limitBody 限制请求体大小。
-func limitBody(n int64) func(http.Handler) http.Handler {
+// limitBodyByPath 限制请求体大小，个别路径可以单独放宽。
+func limitBodyByPath(def int64, overrides map[string]int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			n, ok := overrides[r.URL.Path]
+			if !ok {
+				n = def
+			}
 			r.Body = http.MaxBytesReader(w, r.Body, n)
 			next.ServeHTTP(w, r)
 		})

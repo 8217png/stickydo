@@ -19,6 +19,8 @@ tags:
     description: 注册、登录、令牌
   - name: me
     description: 当前用户与设备
+  - name: sync
+    description: 本地优先的增量同步（docs/architecture.md §5）
   - name: system
 
 paths:
@@ -199,6 +201,66 @@ paths:
         '401':
           $ref: '#/components/responses/Problem'
         '404':
+          $ref: '#/components/responses/Problem'
+
+  /sync/pull:
+    get:
+      tags: [sync]
+      operationId: syncPull
+      summary: 拉取自 since 以来服务端变化的便利贴（含已删除的）
+      parameters:
+        - name: since
+          in: query
+          required: true
+          description: 上次同步得到的 server_version，首次为 0
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 500
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPullResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+
+  /sync/push:
+    post:
+      tags: [sync]
+      operationId: syncPush
+      summary: 上传本地改过的便利贴，逐条比较新旧
+      description: |
+        对每条改动：服务端自客户端上次同步后没变（base_version 相同），或客户端的
+        updated_at 更晚，则写入（applied）；否则服务端更新（stale），返回服务端当前记录。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: 每条改动的处理结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '422':
           $ref: '#/components/responses/Problem'
 
 security:
@@ -400,3 +462,144 @@ components:
         current:
           type: boolean
           description: 是否是发起请求的这台设备
+
+    NoteColor:
+      type: string
+      enum: [lemon, peach, blossom, lavender, sky, mint, sand, paper]
+
+    NoteData:
+      type: object
+      description: 便利贴内容（整条，不是补丁）
+      required: [content, color, pos_x, pos_y, width, height, z_index, pinned, archived]
+      properties:
+        content:
+          type: object
+          description: Tiptap 文档 JSON（type 为 doc）
+          additionalProperties: true
+          # Go 端原样保存 JSON，不解码再编码
+          x-go-type: json.RawMessage
+        color:
+          $ref: '#/components/schemas/NoteColor'
+        pos_x:
+          type: number
+          format: double
+          minimum: -100000
+          maximum: 100000
+        pos_y:
+          type: number
+          format: double
+          minimum: -100000
+          maximum: 100000
+        width:
+          type: number
+          format: double
+          minimum: 40
+          maximum: 4000
+        height:
+          type: number
+          format: double
+          minimum: 40
+          maximum: 4000
+        z_index:
+          type: integer
+          format: int32
+        pinned:
+          type: boolean
+        archived:
+          type: boolean
+
+    Note:
+      type: object
+      required: [id, version, updated_at, data]
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+        updated_at:
+          type: string
+          format: date-time
+          description: 最后一次编辑的时间
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+        data:
+          $ref: '#/components/schemas/NoteData'
+
+    NoteChange:
+      type: object
+      required: [id, base_version, updated_at, deleted]
+      properties:
+        id:
+          type: string
+          format: uuid
+        base_version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 本地上次同步时的服务端版本，从未同步过为 0
+        updated_at:
+          type: string
+          format: date-time
+          description: 本地最后一次编辑的时间
+        deleted:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/NoteData'
+
+    SyncPullResponse:
+      type: object
+      required: [notes, server_version, has_more]
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+        server_version:
+          type: integer
+          format: int64
+          description: 下次 pull 用的 since
+        has_more:
+          type: boolean
+          description: 还有更多变化，接着用 server_version 拉取
+
+    SyncPushRequest:
+      type: object
+      required: [notes]
+      properties:
+        notes:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/NoteChange'
+
+    SyncPushResult:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [applied, stale, invalid]
+          description: applied 已写入；stale 服务端更新，用 note 覆盖本地；invalid 数据不合规，丢弃本地改动
+        note:
+          $ref: '#/components/schemas/Note'
+        reason:
+          type: string
+
+    SyncPushResponse:
+      type: object
+      required: [results, server_version]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncPushResult'
+        server_version:
+          type: integer
+          format: int64

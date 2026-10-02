@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -82,6 +83,42 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for NoteColor.
+const (
+	Blossom  NoteColor = "blossom"
+	Lavender NoteColor = "lavender"
+	Lemon    NoteColor = "lemon"
+	Mint     NoteColor = "mint"
+	Paper    NoteColor = "paper"
+	Peach    NoteColor = "peach"
+	Sand     NoteColor = "sand"
+	Sky      NoteColor = "sky"
+)
+
+// Valid indicates whether the value is a known member of the NoteColor enum.
+func (e NoteColor) Valid() bool {
+	switch e {
+	case Blossom:
+		return true
+	case Lavender:
+		return true
+	case Lemon:
+		return true
+	case Mint:
+		return true
+	case Paper:
+		return true
+	case Peach:
+		return true
+	case Sand:
+		return true
+	case Sky:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Platform.
 const (
 	Android   Platform = "android"
@@ -103,6 +140,27 @@ func (e Platform) Valid() bool {
 	case Other:
 		return true
 	case Web:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncPushResultStatus.
+const (
+	Applied SyncPushResultStatus = "applied"
+	Invalid SyncPushResultStatus = "invalid"
+	Stale   SyncPushResultStatus = "stale"
+)
+
+// Valid indicates whether the value is a known member of the SyncPushResultStatus enum.
+func (e SyncPushResultStatus) Valid() bool {
+	switch e {
+	case Applied:
+		return true
+	case Invalid:
+		return true
+	case Stale:
 		return true
 	default:
 		return false
@@ -175,6 +233,50 @@ type LoginRequest struct {
 	Password string              `json:"password"`
 }
 
+// Note defines model for Note.
+type Note struct {
+	// Data 便利贴内容（整条，不是补丁）
+	Data      NoteData           `json:"data"`
+	DeletedAt *time.Time         `json:"deleted_at,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// UpdatedAt 最后一次编辑的时间
+	UpdatedAt time.Time `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+// NoteChange defines model for NoteChange.
+type NoteChange struct {
+	// BaseVersion 本地上次同步时的服务端版本，从未同步过为 0
+	BaseVersion int64 `json:"base_version"`
+
+	// Data 便利贴内容（整条，不是补丁）
+	Data    *NoteData          `json:"data,omitempty"`
+	Deleted bool               `json:"deleted"`
+	Id      openapi_types.UUID `json:"id"`
+
+	// UpdatedAt 本地最后一次编辑的时间
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NoteColor defines model for NoteColor.
+type NoteColor string
+
+// NoteData 便利贴内容（整条，不是补丁）
+type NoteData struct {
+	Archived bool      `json:"archived"`
+	Color    NoteColor `json:"color"`
+
+	// Content Tiptap 文档 JSON（type 为 doc）
+	Content json.RawMessage `json:"content"`
+	Height  float64         `json:"height"`
+	Pinned  bool            `json:"pinned"`
+	PosX    float64         `json:"pos_x"`
+	PosY    float64         `json:"pos_y"`
+	Width   float64         `json:"width"`
+	ZIndex  int32           `json:"z_index"`
+}
+
 // Platform defines model for Platform.
 type Platform string
 
@@ -206,6 +308,40 @@ type RegisterRequest struct {
 	Password string              `json:"password"`
 }
 
+// SyncPullResponse defines model for SyncPullResponse.
+type SyncPullResponse struct {
+	// HasMore 还有更多变化，接着用 server_version 拉取
+	HasMore bool   `json:"has_more"`
+	Notes   []Note `json:"notes"`
+
+	// ServerVersion 下次 pull 用的 since
+	ServerVersion int64 `json:"server_version"`
+}
+
+// SyncPushRequest defines model for SyncPushRequest.
+type SyncPushRequest struct {
+	Notes []NoteChange `json:"notes"`
+}
+
+// SyncPushResponse defines model for SyncPushResponse.
+type SyncPushResponse struct {
+	Results       []SyncPushResult `json:"results"`
+	ServerVersion int64            `json:"server_version"`
+}
+
+// SyncPushResult defines model for SyncPushResult.
+type SyncPushResult struct {
+	Id     openapi_types.UUID `json:"id"`
+	Note   *Note              `json:"note,omitempty"`
+	Reason *string            `json:"reason,omitempty"`
+
+	// Status applied 已写入；stale 服务端更新，用 note 覆盖本地；invalid 数据不合规，丢弃本地改动
+	Status SyncPushResultStatus `json:"status"`
+}
+
+// SyncPushResultStatus applied 已写入；stale 服务端更新，用 note 覆盖本地；invalid 数据不合规，丢弃本地改动
+type SyncPushResultStatus string
+
 // TokenPair defines model for TokenPair.
 type TokenPair struct {
 	AccessExpiresAt  time.Time          `json:"access_expires_at"`
@@ -226,6 +362,13 @@ type User struct {
 	Name      string              `json:"name"`
 }
 
+// SyncPullParams defines parameters for SyncPull.
+type SyncPullParams struct {
+	// Since 上次同步得到的 server_version，首次为 0
+	Since int64 `form:"since" json:"since"`
+	Limit *int  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -237,6 +380,9 @@ type RegisterJSONRequestBody = RegisterRequest
 
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
+// SyncPushJSONRequestBody defines body for SyncPush for application/json ContentType.
+type SyncPushJSONRequestBody = SyncPushRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -267,6 +413,12 @@ type ServerInterface interface {
 	// ChangePassword 修改密码，并让其他设备全部退出
 	// (POST /me/password)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
+	// SyncPull 拉取自 since 以来服务端变化的便利贴（含已删除的）
+	// (GET /sync/pull)
+	SyncPull(w http.ResponseWriter, r *http.Request, params SyncPullParams)
+	// SyncPush 上传本地改过的便利贴，逐条比较新旧
+	// (POST /sync/push)
+	SyncPush(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -324,6 +476,18 @@ func (_ Unimplemented) RevokeDevice(w http.ResponseWriter, r *http.Request, devi
 // ChangePassword 修改密码，并让其他设备全部退出
 // (POST /me/password)
 func (_ Unimplemented) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SyncPull 拉取自 since 以来服务端变化的便利贴（含已删除的）
+// (GET /sync/pull)
+func (_ Unimplemented) SyncPull(w http.ResponseWriter, r *http.Request, params SyncPullParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SyncPush 上传本地改过的便利贴，逐条比较新旧
+// (POST /sync/push)
+func (_ Unimplemented) SyncPush(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -474,6 +638,66 @@ func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// SyncPull operation middleware
+func (siw *ServerInterfaceWrapper) SyncPull(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SyncPullParams
+
+	// ------------- Required query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncPull(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SyncPush operation middleware
+func (siw *ServerInterfaceWrapper) SyncPush(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncPush(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -613,6 +837,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/me/devices/{deviceId}", wrapper.RevokeDevice)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/sync/pull", wrapper.SyncPull)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/sync/push", wrapper.SyncPush)
 	})
 
 	return r
@@ -1052,6 +1282,110 @@ func (response ChangePassword422ApplicationProblemPlusJSONResponse) VisitChangeP
 	return err
 }
 
+type SyncPullRequestObject struct {
+	Params SyncPullParams
+}
+
+type SyncPullResponseObject interface {
+	VisitSyncPullResponse(w http.ResponseWriter) error
+}
+
+type SyncPull200JSONResponse SyncPullResponse
+
+func (response SyncPull200JSONResponse) VisitSyncPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncPull401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SyncPull401ApplicationProblemPlusJSONResponse) VisitSyncPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncPull422ApplicationProblemPlusJSONResponse Problem
+
+func (response SyncPull422ApplicationProblemPlusJSONResponse) VisitSyncPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncPushRequestObject struct {
+	Body *SyncPushJSONRequestBody
+}
+
+type SyncPushResponseObject interface {
+	VisitSyncPushResponse(w http.ResponseWriter) error
+}
+
+type SyncPush200JSONResponse SyncPushResponse
+
+func (response SyncPush200JSONResponse) VisitSyncPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncPush401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SyncPush401ApplicationProblemPlusJSONResponse) VisitSyncPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncPush422ApplicationProblemPlusJSONResponse Problem
+
+func (response SyncPush422ApplicationProblemPlusJSONResponse) VisitSyncPushResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Login 邮箱密码登录，为当前设备签发令牌
@@ -1081,6 +1415,12 @@ type StrictServerInterface interface {
 	// ChangePassword 修改密码，并让其他设备全部退出
 	// (POST /me/password)
 	ChangePassword(ctx context.Context, request ChangePasswordRequestObject) (ChangePasswordResponseObject, error)
+	// SyncPull 拉取自 since 以来服务端变化的便利贴（含已删除的）
+	// (GET /sync/pull)
+	SyncPull(ctx context.Context, request SyncPullRequestObject) (SyncPullResponseObject, error)
+	// SyncPush 上传本地改过的便利贴，逐条比较新旧
+	// (POST /sync/push)
+	SyncPush(ctx context.Context, request SyncPushRequestObject) (SyncPushResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1368,50 +1708,125 @@ func (sh *strictHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// SyncPull operation middleware
+func (sh *strictHandler) SyncPull(w http.ResponseWriter, r *http.Request, params SyncPullParams) {
+	var request SyncPullRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SyncPull(ctx, request.(SyncPullRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SyncPull")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SyncPullResponseObject); ok {
+		if err := validResponse.VisitSyncPullResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SyncPush operation middleware
+func (sh *strictHandler) SyncPush(w http.ResponseWriter, r *http.Request) {
+	var request SyncPushRequestObject
+
+	var body SyncPushJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SyncPush(ctx, request.(SyncPushRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SyncPush")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SyncPushResponseObject); ok {
+		if err := validResponse.VisitSyncPushResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"qA11TxKslKaaTHdXachZ4765NSHVn/pPAAAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
