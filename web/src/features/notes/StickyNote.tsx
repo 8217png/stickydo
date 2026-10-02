@@ -21,7 +21,7 @@ interface Props {
 
 export const StickyNote = memo(function StickyNote({ note, selected, editing }: Props) {
   const tiltOn = useSettings((s) => s.tilt)
-  const { update, bringToFront, select, setEditing, checkpoint, discard } = useNotes.getState()
+  const { update, bringToFront, select, setEditing } = useNotes.getState()
   const [lifted, setLifted] = useState(false)
   const [hovered, setHovered] = useState(false)
   const draggedRef = useRef(false)
@@ -100,6 +100,7 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
       <NoteToolbar note={note} visible={(selected || hovered) && !lifted} />
 
       <motion.div
+        layoutId={`paper-${note.id}`}
         className="note-paper h-full w-full"
         data-lifted={lifted}
         style={{
@@ -116,34 +117,82 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
           if (!editing) setEditing(note.id)
         }}
       >
-        {editing ? (
-          <NoteEditor
-            note={note}
-            onDone={(content, snapshot) => {
-              setEditing(null)
-              if (docIsEmpty(content)) {
-                // 新建后没写内容：直接丢弃，不打扰用户；原本有内容被清空：按删除处理，可撤销
-                if (!docIsEmpty(note.content)) deleteWithUndo(note.id, snapshot)
-                else discard(note.id)
-                return
-              }
-              if (JSON.stringify(content) !== JSON.stringify(cleanDoc(trimDoc(note.content)))) {
-                checkpoint(snapshot)
-                update(note.id, { content }, { record: false })
-              }
-            }}
-          />
-        ) : (
-          <NoteContent note={note} />
-        )}
+        {editing ? <NoteEditor note={note} onDone={(content, snapshot) => finishEditing(note, content, snapshot)} /> : <NoteContent note={note} />}
       </motion.div>
     </Rnd>
   )
 })
 
-function NoteContent({ note }: { note: Note }) {
+/**
+ * 列表视图里的一张便利贴（docs/frontend-design.md §2.8）：占满一行，高度随内容，不裁切。
+ * 和白板上的同一张共用 layoutId，切换视图时从原来的位置平滑移过去。
+ */
+export const ListNote = memo(function ListNote({ note, selected, editing }: Props) {
+  const [hovered, setHovered] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (editing) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [editing])
   return (
-    <div className="note-text note-text-clip h-full overflow-hidden px-4 pt-4 pb-3 select-none">
+    <motion.div
+      ref={ref}
+      layout="position"
+      className="relative"
+      // 选中或悬停时盖住下一张，操作栏的菜单不会被挡住
+      style={{ zIndex: selected || hovered || editing ? 2 : undefined }}
+      data-note={note.id}
+      data-selected={selected}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.15 } }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onPointerDown={() => useNotes.getState().select(note.id)}
+    >
+      <NoteToolbar note={note} visible={selected || hovered} />
+      <motion.div
+        layoutId={`paper-${note.id}`}
+        className="note-paper w-full"
+        style={{
+          backgroundColor: noteColorVar(note.color),
+          outline: selected ? '2px solid var(--focus-ring)' : '2px solid transparent',
+          outlineOffset: 3,
+        }}
+        transition={SPRING}
+        onDoubleClick={(e) => {
+          e.stopPropagation()
+          if (!editing) useNotes.getState().setEditing(note.id)
+        }}
+      >
+        {editing ? (
+          <NoteEditor note={note} onDone={(content, snapshot) => finishEditing(note, content, snapshot)} fit />
+        ) : (
+          <NoteContent note={note} fit />
+        )}
+      </motion.div>
+    </motion.div>
+  )
+})
+
+/** 结束编辑：内容没变不算编辑；清空了按删除处理（可撤销）；新建后没写内容直接丢弃 */
+function finishEditing(note: Note, content: NoteDoc, snapshot: Snapshot) {
+  const { setEditing, discard, checkpoint, update } = useNotes.getState()
+  setEditing(null)
+  if (docIsEmpty(content)) {
+    if (!docIsEmpty(note.content)) deleteWithUndo(note.id, snapshot)
+    else discard(note.id)
+    return
+  }
+  if (JSON.stringify(content) !== JSON.stringify(cleanDoc(trimDoc(note.content)))) {
+    checkpoint(snapshot)
+    update(note.id, { content }, { record: false })
+  }
+}
+
+/** fit：高度随内容（列表视图），否则按便利贴大小裁切 */
+function NoteContent({ note, fit }: { note: Note; fit?: boolean }) {
+  return (
+    <div className={`note-text px-4 pt-4 pb-3 select-none ${fit ? 'min-h-[72px]' : 'note-text-clip h-full overflow-hidden'}`}>
       <NoteRenderer
         doc={note.content}
         onToggleTask={(path) => useNotes.getState().update(note.id, { content: toggleTaskAt(note.content, path) })}
@@ -156,7 +205,7 @@ function NoteContent({ note }: { note: Note }) {
  * 原地编辑：Tiptap 所见即所得编辑器。Markdown 写法会即时变成格式（# 标题、- 列表、[] 待办、**粗体** 等）。
  * Esc 或 Ctrl/⌘+Enter 结束编辑；点到别处也会结束。
  */
-function NoteEditor({ note, onDone }: { note: Note; onDone: (content: NoteDoc, snapshot: Snapshot) => void }) {
+function NoteEditor({ note, onDone, fit }: { note: Note; onDone: (content: NoteDoc, snapshot: Snapshot) => void; fit?: boolean }) {
   // 进入编辑时的快照：编辑结束、内容确实变了才作为一步撤销记录
   const snapshot = useRef(snapshotNow())
   const done = useRef(false)
@@ -189,7 +238,7 @@ function NoteEditor({ note, onDone }: { note: Note; onDone: (content: NoteDoc, s
   return (
     <EditorContent
       editor={editor}
-      className="no-drag note-text h-full cursor-text overflow-y-auto px-4 pt-4 pb-3"
+      className={`no-drag note-text cursor-text px-4 pt-4 pb-3 ${fit ? 'min-h-[72px]' : 'h-full overflow-y-auto'}`}
       onPointerDown={(e) => e.stopPropagation()}
     />
   )

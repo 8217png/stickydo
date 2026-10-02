@@ -10,6 +10,8 @@ import {
   type Board,
   commitBoards,
   commitLocal,
+  isSortKey,
+  keyBetween,
   type Note,
   patchStep,
   type RemoteChanges,
@@ -210,6 +212,8 @@ interface NotesState extends Persisted {
   restoreBoard: (board: Board, notes: Note[]) => void
   /** 把便利贴移到另一个看板（null 为收件箱） */
   moveToBoard: (id: string, boardId: string | null) => void
+  /** 把看板移到排序后的第 toIndex 位（拖动排序、上移 / 下移） */
+  moveBoard: (id: string, toIndex: number) => void
 }
 
 const maxZ = (notes: Note[]) => notes.reduce((m, n) => Math.max(m, n.z), 0)
@@ -394,6 +398,18 @@ export const useNotes = create<NotesState>()((set, get) => {
       edit({ boards: [...s.boards, board], notes: [...s.notes, ...notes.filter((n) => !existing.has(n.id))] })
     },
 
+    moveBoard: (id, toIndex) => {
+      const s = get()
+      const order = sortedBoards(s.boards)
+      const from = order.findIndex((b) => b.id === id)
+      const to = Math.max(0, Math.min(order.length - 1, toIndex))
+      if (from < 0 || from === to) return
+      const next = order.filter((b) => b.id !== id)
+      next.splice(to, 0, order[from])
+      s.checkpoint()
+      edit({ boards: s.boards.map(withKeys(sortKeysFor(next, to))) })
+    },
+
     moveToBoard: (id, boardId) => {
       const s = get()
       const note = s.notes.find((n) => n.id === id)
@@ -407,12 +423,37 @@ export const useNotes = create<NotesState>()((set, get) => {
   }
 })
 
-/** 看板排序：新看板排在最后。分数索引的简化版，按字节序比较 */
+/** 看板排序：新看板排在最后（排序键见 @stickydo/core/sync 的 keyBetween） */
 function nextSortOrder(boards: Board[]): string {
   const last = boards.reduce((m, b) => (b.sortOrder > m ? b.sortOrder : m), '')
-  const key = Date.now().toString(36).padStart(10, '0')
-  return key > last ? key : `${last}0`
+  try {
+    return keyBetween(last, null)
+  } catch {
+    // 不认识的键（包含其他字符）：在它后面加一位，一定比它大
+    return `${last}i`
+  }
 }
+
+/**
+ * 排好新顺序后需要换键的看板：通常只有被移动的那个（夹在前后两个之间）；
+ * 前后的键不合规或顺序不对（例如两个看板的键相同）时，整列重新编号。
+ */
+function sortKeysFor(order: Board[], moved: number): Map<string, string> {
+  const prev = order[moved - 1]?.sortOrder ?? ''
+  const next = order[moved + 1]?.sortOrder ?? null
+  const ok = (prev === '' || isSortKey(prev)) && (next === null || isSortKey(next)) && (next === null || prev < next)
+  if (ok) return new Map([[order[moved].id, keyBetween(prev, next)]])
+  const keys = new Map<string, string>()
+  let k = ''
+  for (const b of order) {
+    k = keyBetween(k, null)
+    keys.set(b.id, k)
+  }
+  return keys
+}
+
+const withKeys = (keys: Map<string, string>) => (b: Board) =>
+  keys.has(b.id) && keys.get(b.id) !== b.sortOrder ? { ...b, sortOrder: keys.get(b.id)! } : b
 
 /** 便利贴实际所在的看板：看板已不存在（例如在别的设备上删掉了）时算在收件箱 */
 export function noteBoardId(n: Note, boardIds: Set<string>): string | null {

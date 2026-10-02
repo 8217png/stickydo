@@ -101,7 +101,7 @@ boards       (id, user_id, name, color, sort_order, ...公共字段)
 notes        (id, user_id, board_id, title, content,      -- content 为 Tiptap JSON
               color, pinned, archived,
               pos_x, pos_y, width, height, z_index,       -- 白板布局
-              sort_order,                                 -- 列表排序（分数索引）
+              sort_order,                                 -- 预留：列表视图目前按白板上的阅读顺序排列
               ...公共字段)
 
 todos        (id, user_id, board_id NULL, note_id NULL,   -- 可以独立，也可以属于某张便利贴

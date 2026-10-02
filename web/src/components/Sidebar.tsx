@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, Reorder } from 'motion/react'
 import { collectTags, todayCount } from '@stickydo/core/capture'
 import { NOTE_COLORS, noteColorVar } from '../design/colors'
 import { type Board, noteBoardId, sortedBoards, useNotes } from '../features/notes/store'
@@ -144,14 +144,7 @@ function SidebarPanel() {
             </button>
           }
         >
-          {sortedBoards(boards).map((b) => (
-            <BoardItem
-              key={b.id}
-              board={b}
-              count={counts.get(b.id) ?? 0}
-              active={active({ kind: 'board', boardId: b.id })}
-            />
-          ))}
+          <BoardList boards={boards} counts={counts} view={view} />
           {adding ? (
             <NameInput
               placeholder="看板名称"
@@ -247,7 +240,73 @@ function Item(props: {
   )
 }
 
-function BoardItem({ board, count, active }: { board: Board; count: number; active: boolean }) {
+/** 看板列表：可以上下拖动排序，松手时只给被移动的看板换排序键 */
+function BoardList({ boards, counts, view }: { boards: Board[]; counts: Map<string | null, number>; view: View }) {
+  const sorted = useMemo(() => sortedBoards(boards), [boards])
+  const [order, setOrder] = useState(() => sorted.map((b) => b.id))
+  const latest = useRef(order)
+  const dragging = useRef(false)
+  // 刚拖完时不当作点击
+  const suppressClick = useRef(false)
+  const key = sorted.map((b) => b.id).join()
+  useEffect(() => {
+    if (dragging.current) return
+    const ids = key ? key.split(',') : []
+    latest.current = ids
+    setOrder(ids)
+  }, [key])
+  const byId = new Map(boards.map((b) => [b.id, b]))
+
+  return (
+    <Reorder.Group
+      as="div"
+      axis="y"
+      values={order}
+      onReorder={(ids: string[]) => {
+        latest.current = ids
+        setOrder(ids)
+      }}
+      className="flex flex-col gap-px"
+    >
+      {order.map((id, i) => {
+        const b = byId.get(id)
+        if (!b) return null
+        return (
+          <BoardItem
+            key={id}
+            board={b}
+            index={i}
+            total={order.length}
+            count={counts.get(id) ?? 0}
+            active={sameView(view, { kind: 'board', boardId: id })}
+            suppressClick={suppressClick}
+            onDragStart={() => {
+              dragging.current = true
+              suppressClick.current = true
+            }}
+            onDragEnd={() => {
+              dragging.current = false
+              useNotes.getState().moveBoard(id, latest.current.indexOf(id))
+              setTimeout(() => (suppressClick.current = false), 0)
+            }}
+          />
+        )
+      })}
+    </Reorder.Group>
+  )
+}
+
+function BoardItem(props: {
+  board: Board
+  index: number
+  total: number
+  count: number
+  active: boolean
+  suppressClick: { current: boolean }
+  onDragStart: () => void
+  onDragEnd: () => void
+}) {
+  const { board, count, active } = props
   const [renaming, setRenaming] = useState(false)
   const [menu, setMenu] = useState(false)
   if (renaming) {
@@ -263,42 +322,58 @@ function BoardItem({ board, count, active }: { board: Board; count: number; acti
     )
   }
   return (
-    <Item
-      icon={<span className="size-2.5 rounded-full border border-black/10" style={{ background: noteColorVar(board.color) }} />}
-      label={board.name}
-      count={count}
-      muted
-      active={active}
-      onClick={() => setView({ kind: 'board', boardId: board.id })}
-      dropBoard={board.id}
+    <Reorder.Item
+      as="div"
+      value={board.id}
+      dragListener={!menu}
+      onDragStart={props.onDragStart}
+      onDragEnd={props.onDragEnd}
+      className="relative rounded-lg"
+      whileDrag={{ scale: 1.02, zIndex: 5, boxShadow: 'var(--shadow-chrome)', backgroundColor: 'var(--surface)' }}
+      data-board-item={board.name}
     >
-      <button
-        type="button"
-        title="更多"
-        aria-label={`「${board.name}」的更多操作`}
-        className="absolute top-1 right-1 grid size-6 place-items-center rounded-md text-ink-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-chrome-hover hover:text-ink focus-visible:opacity-100 aria-expanded:opacity-100"
-        aria-expanded={menu}
-        onClick={() => setMenu((m) => !m)}
+      <Item
+        icon={<span className="size-2.5 rounded-full border border-black/10" style={{ background: noteColorVar(board.color) }} />}
+        label={board.name}
+        count={count}
+        muted
+        active={active}
+        onClick={() => {
+          if (!props.suppressClick.current) setView({ kind: 'board', boardId: board.id })
+        }}
+        dropBoard={board.id}
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-          <circle cx="3.5" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="12.5" cy="8" r="1.2" />
-        </svg>
-      </button>
-      {menu && (
-        <BoardMenu
-          board={board}
-          onClose={() => setMenu(false)}
-          onRename={() => {
-            setMenu(false)
-            setRenaming(true)
-          }}
-        />
-      )}
-    </Item>
+        <button
+          type="button"
+          title="更多"
+          aria-label={`「${board.name}」的更多操作`}
+          className="absolute top-1 right-1 grid size-6 place-items-center rounded-md text-ink-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-chrome-hover hover:text-ink focus-visible:opacity-100 aria-expanded:opacity-100"
+          aria-expanded={menu}
+          onClick={() => setMenu((m) => !m)}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <circle cx="3.5" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="12.5" cy="8" r="1.2" />
+          </svg>
+        </button>
+        {menu && (
+          <BoardMenu
+            board={board}
+            index={props.index}
+            total={props.total}
+            onClose={() => setMenu(false)}
+            onRename={() => {
+              setMenu(false)
+              setRenaming(true)
+            }}
+          />
+        )}
+      </Item>
+    </Reorder.Item>
   )
 }
 
-function BoardMenu({ board, onClose, onRename }: { board: Board; onClose: () => void; onRename: () => void }) {
+function BoardMenu(props: { board: Board; index: number; total: number; onClose: () => void; onRename: () => void }) {
+  const { board, onClose, onRename } = props
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const away = (e: PointerEvent) => {
@@ -324,6 +399,9 @@ function BoardMenu({ board, onClose, onRename }: { board: Board; onClose: () => 
       className="absolute top-8 right-0 z-10 w-[188px] rounded-ui border border-chrome-border bg-surface p-1 shadow-chrome"
     >
       <MenuItem onClick={onRename}>重命名</MenuItem>
+      {/* 键盘也能排序（拖动的替代） */}
+      {props.index > 0 && <MenuItem onClick={() => useNotes.getState().moveBoard(board.id, props.index - 1)}>上移</MenuItem>}
+      {props.index < props.total - 1 && <MenuItem onClick={() => useNotes.getState().moveBoard(board.id, props.index + 1)}>下移</MenuItem>}
       <div className="flex flex-wrap gap-1 px-2 py-1.5" role="group" aria-label="颜色">
         {NOTE_COLORS.map((c) => (
           <button

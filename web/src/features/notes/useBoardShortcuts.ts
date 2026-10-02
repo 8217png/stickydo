@@ -6,7 +6,7 @@ import { docFromText } from './doc'
 import { useNotes, visibleNotes } from './store'
 import { nextNotePosition } from './viewport'
 import { openCapture, openPalette, useCommandUI } from '../capture/state'
-import { toggleSidebar, useView } from '../view'
+import { toggleBoardLayout, toggleSidebar, useBoardLayout, useView } from '../view'
 
 /** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
 function isTyping(e: KeyboardEvent) {
@@ -75,6 +75,12 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
       // 下面这些只在白板上有意义
       if (useView.getState().view.kind !== 'board') return
 
+      // V：白板 / 列表
+      if (key === 'v' || key === 'V') {
+        e.preventDefault()
+        toggleBoardLayout()
+        return
+      }
       if (key === 'n' || key === 'N') {
         e.preventDefault()
         const id = s.create(nextNotePosition())
@@ -82,7 +88,7 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         return
       }
 
-      if (key === '-' || key === '=' || key === '+') {
+      if ((key === '-' || key === '=' || key === '+') && useBoardLayout.getState().layout === 'board') {
         // 全局：统一所有便利贴的大小并自动排列
         e.preventDefault()
         stepNoteSize(key === '-' ? -1 : 1)

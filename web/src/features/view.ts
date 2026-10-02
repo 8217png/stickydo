@@ -77,3 +77,20 @@ if (typeof window !== 'undefined' && typeof matchMedia !== 'undefined') {
     useView.setState({ sidebarOpen: e.matches && load<boolean>(SIDEBAR_KEY) !== false })
   })
 }
+
+// ---------- 白板 / 列表 ----------
+
+export type BoardLayout = 'board' | 'list'
+const LAYOUT_KEY = 'stickydo.layout'
+
+/** 看板的显示方式：白板（自由摆放）或列表（按阅读顺序一列排开）。所有看板共用，记在本机 */
+export const useBoardLayout = create<{ layout: BoardLayout }>(() => ({
+  layout: load<BoardLayout>(LAYOUT_KEY) === 'list' ? 'list' : 'board',
+}))
+
+export function setBoardLayout(layout: BoardLayout) {
+  save(LAYOUT_KEY, layout)
+  useBoardLayout.setState({ layout })
+}
+
+export const toggleBoardLayout = () => setBoardLayout(useBoardLayout.getState().layout === 'board' ? 'list' : 'board')

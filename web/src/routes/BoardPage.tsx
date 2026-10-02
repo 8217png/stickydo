@@ -11,12 +11,15 @@ import { CommandPalette } from '../features/capture/CommandPalette'
 import { closeCommandUI } from '../features/capture/state'
 import { Sidebar } from '../components/Sidebar'
 import { TodoView } from '../features/todos/TodoView'
-import { toggleSidebar, useView } from '../features/view'
+import { toggleSidebar, useBoardLayout, useView } from '../features/view'
+import { NoteList } from '../features/notes/NoteList'
+import { LayoutToggle } from '../components/LayoutToggle'
 import { useNotes } from '../features/notes/store'
 
 /** 主页面：侧边栏 + 白板或待办列表。快捷键只在这一页生效 */
 export function BoardPage() {
   const view = useView((s) => s.view)
+  const layout = useBoardLayout((s) => s.layout)
   const boards = useNotes((s) => s.boards)
   const hydrated = useNotes((s) => s.hydrated)
   // 看板在别处被删掉了：回到收件箱
@@ -46,7 +49,14 @@ export function BoardPage() {
       <Sidebar />
       <main className="relative h-full min-w-0 flex-1">
         <TopBar onHelp={toggleHelp} />
-        {view.kind === 'board' ? <Whiteboard boardId={boardId} /> : <TodoView view={view} />}
+        {view.kind !== 'board' ? (
+          <TodoView view={view} />
+        ) : layout === 'list' ? (
+          <NoteList boardId={boardId} />
+        ) : (
+          <Whiteboard boardId={boardId} />
+        )}
+        {view.kind === 'board' && <LayoutToggle />}
       </main>
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
       <QuickCapture />
