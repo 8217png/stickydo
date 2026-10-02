@@ -22,6 +22,16 @@ const GROUPS: { title: string; items: [keys: string[], label: string][] }[] = [
     ],
   },
   {
+    title: '编辑表格（光标在表格里时，下方也有工具栏）',
+    items: [
+      [['Tab'], '下一格（在最后一格按，加一行）'],
+      [['Ctrl', 'Alt', '↑ / ↓'], '在上方 / 下方插入行'],
+      [['Ctrl', 'Shift', 'Backspace'], '删除当前行（空行的第一格开头按 Backspace 也可以）'],
+      [['Ctrl', 'Alt', 'Shift', '← / →'], '在左侧 / 右侧插入列'],
+      [['Ctrl', 'Alt', 'Shift', 'Backspace'], '删除当前列'],
+    ],
+  },
+  {
     title: '全局',
     items: [
       [['Ctrl', 'K'], '命令面板：搜索所有便利贴、切换看板、执行操作'],
@@ -50,7 +60,7 @@ export function ShortcutSheet({ open, onClose }: { open: boolean; onClose: () =>
           <motion.div
             role="dialog"
             aria-label="快捷键"
-            className="w-full max-w-md rounded-2xl border border-chrome-border bg-chrome p-6 shadow-chrome backdrop-blur-xl"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-chrome-border bg-chrome p-6 shadow-chrome backdrop-blur-xl"
             initial={{ scale: 0.96, y: 8 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.97, y: 4 }}

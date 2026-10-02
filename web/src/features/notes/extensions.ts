@@ -1,7 +1,7 @@
 import { type AnyExtension, Extension, type JSONContent } from '@tiptap/core'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
-import { TextSelection } from '@tiptap/pm/state'
+import { type EditorState, TextSelection } from '@tiptap/pm/state'
 import { Placeholder } from '@tiptap/extensions'
 import StarterKit from '@tiptap/starter-kit'
 import { dueFromAttr, formatDue, PRIORITY_LABEL, todoMeta } from '@stickydo/core/capture'
@@ -47,15 +47,31 @@ const TodoItem = TaskItem.extend({
   },
 })
 
+/** 光标所在的表格行：行节点、它在表格里是第几行、行的起始位置 */
+function currentRow(state: EditorState) {
+  const { $from } = state.selection
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === 'tableRow') {
+      return { row: $from.node(d), index: $from.index(d - 1), start: $from.before(d), depth: d }
+    }
+  }
+  return null
+}
+
 /**
- * Markdown 写法的表格：在 `| 姓名 | 电话 |` 这样一行的末尾回车，这一行变成表头，下面接一行空的，
- * 光标移到第一个格子。之后 Tab / Shift+Tab 在格子之间移动，在最后一格按 Tab 加一行。
- * 只在顶层段落里生效（列表、引用、表格里不变）。
+ * 表格的写法和快捷键：
+ * - Markdown 写法：在 `| 姓名 | 电话 |` 这样一行的末尾回车，这一行变成表头，下面接一行空的，光标移到第一个格子。
+ *   只在顶层段落里生效（列表、引用、表格里不变）
+ * - Tab / Shift+Tab 在格子之间移动，在最后一格按 Tab 加一行（Tiptap 自带）
+ * - Ctrl+Alt+↑ / ↓ 在上方 / 下方插入行，Ctrl+Shift+Backspace 删除当前行
+ * - Ctrl+Alt+Shift+← / → 在左侧 / 右侧插入列，Ctrl+Alt+Shift+Backspace 删除当前列
+ * - 在一行空行的第一格开头按 Backspace：删掉这一行，光标回到上一行末尾（表头不删）
  */
-const MarkdownTable = Extension.create({
-  name: 'markdownTable',
+const TableShortcuts = Extension.create({
+  name: 'tableShortcuts',
   priority: 200,
   addKeyboardShortcuts() {
+    const inTable = () => this.editor.isActive('table')
     return {
       Enter: ({ editor }) => {
         const { $from, empty } = editor.state.selection
@@ -86,6 +102,29 @@ const MarkdownTable = Extension.create({
           })
           .run()
       },
+      Backspace: ({ editor }) => {
+        const { selection } = editor.state
+        const r = currentRow(editor.state)
+        if (!r || !selection.empty || r.index === 0 || r.row.textContent !== '') return false
+        // 只在第一格的开头：光标前面就是这一行的开始（行 → 格子 → 段落）
+        if (selection.from !== r.start + 3) return false
+        return editor
+          .chain()
+          .deleteRow()
+          .command(({ tr }) => {
+            // 删掉后回到上一行最后一格的末尾
+            const prev = tr.doc.resolve(r.start - 1)
+            tr.setSelection(TextSelection.near(prev, -1))
+            return true
+          })
+          .run()
+      },
+      'Mod-Alt-ArrowUp': () => inTable() && this.editor.commands.addRowBefore(),
+      'Mod-Alt-ArrowDown': () => inTable() && this.editor.commands.addRowAfter(),
+      'Mod-Shift-Backspace': () => inTable() && this.editor.commands.deleteRow(),
+      'Mod-Alt-Shift-ArrowLeft': () => inTable() && this.editor.commands.addColumnBefore(),
+      'Mod-Alt-Shift-ArrowRight': () => inTable() && this.editor.commands.addColumnAfter(),
+      'Mod-Alt-Shift-Backspace': () => inTable() && this.editor.commands.deleteColumn(),
     }
   },
 })
@@ -112,7 +151,7 @@ export function noteExtensions(opts: { placeholder?: string } = {}): AnyExtensio
     TableRow,
     TableHeader,
     TableCell,
-    MarkdownTable,
+    TableShortcuts,
     ...(opts.placeholder ? [Placeholder.configure({ placeholder: opts.placeholder })] : []),
   ]
 }

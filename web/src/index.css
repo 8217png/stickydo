@@ -80,6 +80,10 @@ body {
 .note-paper:not([data-editing='true']) {
   -webkit-touch-callout: none;
 }
+/* 正在编辑的便利贴在最上层：编辑器和下方的表格工具栏不会被旁边的便利贴挡住 */
+.note-shell[data-editing='true'] {
+  z-index: 100000 !important;
+}
 
 .note-paper[data-lifted='true'] {
   box-shadow: var(--shadow-note-lift);
