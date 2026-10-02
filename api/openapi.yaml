@@ -1,0 +1,402 @@
+openapi: 3.0.3
+info:
+  title: Sticky-Do API
+  version: 0.1.0
+  description: |
+    Sticky-Do 的唯一接口定义来源（docs/architecture.md §2）。
+    Go 服务端（oapi-codegen）与 TypeScript 客户端（openapi-typescript）都由本文件生成。
+
+    认证：Access Token（JWT，15 分钟）放在 `Authorization: Bearer <token>`；
+    Refresh Token（30 天，按设备记录）每次刷新都会轮换，旧的立即失效。
+    不使用 Cookie，Web、插件和 App 共用同一套机制。
+
+    错误统一返回 `application/problem+json`（RFC 9457），`code` 字段给程序判断用。
+servers:
+  - url: /api/v1
+
+tags:
+  - name: auth
+    description: 注册、登录、令牌
+  - name: me
+    description: 当前用户与设备
+  - name: system
+
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: 健康检查（含数据库连通性）
+      security: []
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          $ref: '#/components/responses/Problem'
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: 邮箱注册，并直接登录当前设备
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: 邮箱密码登录，为当前设备签发令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshTokens
+      summary: 用 Refresh Token 换一对新令牌（轮换）
+      description: |
+        旧的 Refresh Token 立即失效。如果同一个旧 Token 被再次使用（可能已泄露），
+        该设备会被吊销，需要重新登录。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: 退出登录，吊销当前设备
+      responses:
+        '204':
+          description: 已退出
+        '401':
+          $ref: '#/components/responses/Problem'
+
+  /me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: 当前用户
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Problem'
+
+  /me/password:
+    post:
+      tags: [me]
+      operationId: changePassword
+      summary: 修改密码，并让其他设备全部退出
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: 已修改
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+
+  /me/devices:
+    get:
+      tags: [me]
+      operationId: listDevices
+      summary: 已登录的设备
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Problem'
+
+  /me/devices/{deviceId}:
+    delete:
+      tags: [me]
+      operationId: revokeDevice
+      summary: 让某台设备退出登录
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 已吊销
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Problem:
+      description: 错误
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 错误详情
+      required: [title, status, code]
+      properties:
+        type:
+          type: string
+          default: about:blank
+        title:
+          type: string
+          description: 给人看的简短说明
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        fields:
+          type: object
+          description: 字段级校验错误，键是字段名
+          additionalProperties:
+            type: string
+
+    ErrorCode:
+      type: string
+      enum:
+        - bad_request
+        - validation_failed
+        - unauthorized
+        - token_expired
+        - invalid_credentials
+        - email_taken
+        - wrong_password
+        - not_found
+        - rate_limited
+        - unavailable
+        - internal
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    Platform:
+      type: string
+      enum: [web, extension, android, ios, other]
+
+    DeviceInfo:
+      type: object
+      description: 登录时上报的设备信息，用于设备列表展示
+      required: [name, platform]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Chrome · macOS
+        platform:
+          $ref: '#/components/schemas/Platform'
+
+    RegisterRequest:
+      type: object
+      required: [email, password, device]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 8
+          maxLength: 200
+        name:
+          type: string
+          maxLength: 50
+        device:
+          $ref: '#/components/schemas/DeviceInfo'
+
+    LoginRequest:
+      type: object
+      required: [email, password, device]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          maxLength: 200
+        device:
+          $ref: '#/components/schemas/DeviceInfo'
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+          maxLength: 200
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 200
+
+    TokenPair:
+      type: object
+      required: [access_token, access_expires_at, refresh_token, refresh_expires_at, token_type]
+      properties:
+        access_token:
+          type: string
+        access_expires_at:
+          type: string
+          format: date-time
+        refresh_token:
+          type: string
+        refresh_expires_at:
+          type: string
+          format: date-time
+        token_type:
+          type: string
+          enum: [Bearer]
+
+    AuthResponse:
+      type: object
+      required: [user, device_id, tokens]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        device_id:
+          type: string
+          format: uuid
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+
+    User:
+      type: object
+      required: [id, email, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Device:
+      type: object
+      required: [id, name, platform, created_at, last_seen_at, current]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        platform:
+          $ref: '#/components/schemas/Platform'
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: 是否是发起请求的这台设备

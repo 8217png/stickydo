@@ -1,0 +1,44 @@
+# 本地开发 / 自部署：PostgreSQL + Redis + API 服务
+#   docker compose -f deploy/docker-compose.yml up -d
+# 前端开发时另开终端：cd web && npm run dev（Vite 把 /api 代理到 :8080）
+name: stickydo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stickydo
+      POSTGRES_PASSWORD: stickydo
+      POSTGRES_DB: stickydo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stickydo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # 多实例时的实时通知与限流（M5 起使用）
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  server:
+    build: ../server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      STICKYDO_DATABASE_URL: postgres://stickydo:stickydo@postgres:5432/stickydo?sslmode=disable
+      # 仅用于本地开发；部署时务必换成随机生成的长密钥
+      STICKYDO_JWT_SECRET: ${STICKYDO_JWT_SECRET:-dev-only-secret-change-me-0123456789}
+      STICKYDO_CORS_ORIGINS: ${STICKYDO_CORS_ORIGINS:-http://localhost:5173}
+      STICKYDO_LOG_FORMAT: json
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
