@@ -35,13 +35,63 @@ export function docText(node: JSONContent | undefined): string {
   if (node.type === 'text') return node.text ?? ''
   if (node.type === 'hardBreak') return '\n'
   const inner = (node.content ?? []).map(docText)
-  const isBlockContainer = node.type === 'doc' || node.type?.endsWith('List') || node.type === 'listItem' || node.type === 'taskItem' || node.type === 'blockquote'
-  return inner.join(isBlockContainer ? '\n' : '')
+  const isBlockContainer =
+    node.type === 'doc' || node.type?.endsWith('List') || node.type === 'listItem' || node.type === 'taskItem' || node.type === 'blockquote' || node.type === 'table'
+  // 表格：一行一行，同一行的格子用制表符隔开；格子里的多段用空格连接
+  const sep = isBlockContainer ? '\n' : node.type === 'tableRow' ? '\t' : node.type === 'tableCell' || node.type === 'tableHeader' ? ' ' : ''
+  return inner.join(sep)
 }
 
-/** 第一行有字的文本，用作提示条里的标题 */
+// ---------- Markdown 表格 ----------
+
+/** 按没有转义的 | 拆开一行 */
+function splitRow(line: string): string[] {
+  const cells: string[] = []
+  let cur = ''
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (c === '\\' && line[i + 1] === '|') {
+      cur += '|'
+      i++
+    } else if (c === '|') {
+      cells.push(cur.trim())
+      cur = ''
+    } else cur += c
+  }
+  cells.push(cur.trim())
+  return cells
+}
+
+const SEPARATOR_CELL = /^:?-+:?$/
+
+/**
+ * Markdown 表格的一行（`| 姓名 | 电话 |`，两边都要有 |）拆成格子；不是表格行、或者是分隔行（`|---|---|`）时返回 null。
+ * 编辑器里在这样一行末尾回车，就把它变成表格的表头。
+ */
+export function markdownTableRow(line: string): string[] | null {
+  const t = line.trim()
+  if (t.length < 3 || !t.startsWith('|') || !t.endsWith('|') || t.endsWith('\\|')) return null
+  const cells = splitRow(t.slice(1, -1))
+  if (cells.every((c) => c === '')) return null
+  if (cells.every((c) => SEPARATOR_CELL.test(c))) return null
+  return cells
+}
+
+/** 文字里有没有 Markdown 表格（表头行后面紧跟分隔行），粘贴时用来决定要不要按 Markdown 解析 */
+export function hasMarkdownTable(text: string): boolean {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
+  return lines.some((line, i) => {
+    const next = lines[i + 1]?.trim()
+    if (!next || !line.includes('|') || !next.includes('|')) return false
+    const sep = splitRow(next.replace(/^\|/, '').replace(/\|$/, ''))
+    return sep.length > 0 && sep.every((c) => SEPARATOR_CELL.test(c)) && splitRow(line.trim().replace(/^\|/, '').replace(/\|$/, '')).length === sep.length
+  })
+}
+
+/** 第一行有字的文本，用作提示条里的标题（表格的一行显示成“姓名 · 电话”） */
 export function docTitle(d: NoteDoc): string {
-  return docText(d).split('\n').find((l) => l.trim())?.trim() ?? ''
+  const line = docText(d).split('\n').find((l) => l.trim()) ?? ''
+  return line.split('\t').map((c) => c.trim()).filter(Boolean).join(' · ')
 }
 
 export const docIsEmpty = (d: NoteDoc) => docText(d).trim() === ''

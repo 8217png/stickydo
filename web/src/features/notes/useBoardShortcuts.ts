@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { NOTE_COLORS } from '../../design/colors'
 import { deleteWithUndo, stepNoteSize } from './actions'
 import { readingOrder } from './layout'
-import { docFromText } from './doc'
+import { docFromText, hasMarkdownTable, loadMarkdown } from './doc'
 import { useNotes, visibleNotes } from './store'
 import { nextNotePosition, scrollNoteIntoView } from './viewport'
 import { closePalette, openCapture, openPalette, useCommandUI } from '../capture/state'
@@ -145,7 +145,15 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
       const text = e.clipboardData?.getData('text/plain')?.trim()
       if (!text) return
       e.preventDefault()
-      useNotes.getState().create({ ...nextNotePosition(), content: docFromText(text.slice(0, 5000)) })
+      const pos = nextNotePosition()
+      const clipped = text.slice(0, 5000)
+      // 带 Markdown 表格的文字按 Markdown 解析（转换器按需加载），其余原样保存
+      if (hasMarkdownTable(clipped)) {
+        loadMarkdown()
+          .then((toDoc) => toDoc(clipped))
+          .catch(() => docFromText(clipped))
+          .then((content) => useNotes.getState().create({ ...pos, content }))
+      } else useNotes.getState().create({ ...pos, content: docFromText(clipped) })
     }
 
     window.addEventListener('keydown', onKey)
