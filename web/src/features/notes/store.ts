@@ -5,10 +5,9 @@ import { load, save } from '../../lib/storage'
 import { type NoteSizeKey, useSettings } from '../settings'
 import { currentPopupSize } from '../../extension/popupSize'
 import { surface } from '../../extension/surface'
-import { commitLocal, patchSnapshot } from '../../sync/merge'
-import type { Note, NotesData, RemoteNote } from '../../sync/model'
-import { emptyPersisted, migrateFromLocalStorage, type NotesRepo, openNotesRepo, type Persisted } from '../../storage/notesRepo'
-import { createSaveQueue } from '../../storage/saveQueue'
+import { createSaveQueue, emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/storage'
+import { commitLocal, type Note, type NotesData, patchSnapshot, type RemoteNote } from '@stickydo/core/sync'
+import { migrateFromLocalStorage, openNotesRepo } from '../../storage/notesRepo'
 import { docTitle, emptyDoc, isNoteDoc, markdownToDoc } from './doc'
 import { gridLayout } from './layout'
 
@@ -349,7 +348,7 @@ const snapshotOf = (s: Persisted): Persisted => ({ notes: s.notes, tombstones: s
 
 const SAVE_FAILED_TOAST = 'storage-save-failed'
 
-/** 按顺序保存，只写变化的行；失败时提示并自动重试（storage/saveQueue.ts） */
+/** 按顺序保存，只写变化的行；失败时提示并自动重试（@stickydo/core/storage 的 saveQueue） */
 const saves = createSaveQueue({
   getRepo,
   onSaved: (owner, prev) => {

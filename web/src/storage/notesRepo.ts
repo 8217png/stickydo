@@ -1,26 +1,12 @@
 import Dexie, { type Table } from 'dexie'
-import type { Note, NotesData, Tombstone } from '../sync/model'
+import type { Note, Tombstone } from '@stickydo/core/sync'
+import { emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/storage'
 
 /**
- * 便利贴的本地存储（docs/architecture.md §5.5）。
+ * 便利贴的本地存储（docs/architecture.md §5.5），实现 @stickydo/core/storage 的 NotesRepo。
  * 默认 IndexedDB（Dexie），每张便利贴一行，只写变化的行；
  * 浏览器不允许使用 IndexedDB 时（例如部分隐私模式）退回 localStorage。
  */
-
-export interface Persisted extends NotesData {
-  /** 同步游标：上次拉取到的服务端版本 */
-  cursor: number
-}
-
-export interface NotesRepo {
-  readonly kind: 'indexeddb' | 'localstorage'
-  /** 读取某个归属（本机或某个账号）的全部数据；从未保存过返回 null */
-  load(owner: string): Promise<Persisted | null>
-  /** 保存：与 prev（上次保存的内容）比较，只写入变化的部分 */
-  save(owner: string, prev: Persisted | null, next: Persisted): Promise<void>
-}
-
-export const emptyPersisted = (): Persisted => ({ notes: [], tombstones: [], cursor: 0 })
 
 // ---------- IndexedDB ----------
 

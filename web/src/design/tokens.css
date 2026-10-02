@@ -1,10 +1,9 @@
 /*
  * 设计 token（docs/frontend-design.md §5）
- * 颜色、阴影、圆角、间距、字体、动效时长统一定义在这里，再映射到 Tailwind 主题。
+ * 由 scripts/gen-tokens.ts 根据 packages/core/src/design/tokens.ts 生成，不要手改：npm run gen:tokens
  * 主题：<html data-theme="light|dark"> 表示显式选择；没有该属性时跟随系统（prefers-color-scheme）。
  */
 :root {
-  /* 界面 */
   --board-bg: #ece9e3;
   --board-dot: rgb(60 50 30 / 0.07);
   --ink: #2b2a26;
@@ -16,8 +15,6 @@
   --focus-ring: #6b8afd;
   --overdue: #e0893a;
   --ok: #4f9a6c;
-
-  /* 表单与按钮 */
   --accent: #2b2a26;
   --accent-ink: #fbfaf6;
   --accent-hover: #44423c;
@@ -27,8 +24,6 @@
   --field-border: rgb(60 50 30 / 0.16);
   --field-border-hover: rgb(60 50 30 / 0.3);
   --surface: #fbfaf6;
-
-  /* 便利贴：浅色 */
   --note-lemon: #fff4b8;
   --note-peach: #ffd9c7;
   --note-blossom: #ffd6e7;
@@ -41,32 +36,19 @@
   --note-ink-muted: rgb(43 42 38 / 0.55);
   --note-noise-opacity: 0.35;
   --note-noise-blend: multiply;
-
-  /* 阴影：多层柔和；拿起时加深 */
-  --shadow-note:
-    0 1px 1px rgb(60 50 30 / 0.06), 0 2px 4px rgb(60 50 30 / 0.07),
-    0 8px 16px -6px rgb(60 50 30 / 0.14);
-  --shadow-note-lift:
-    0 2px 3px rgb(60 50 30 / 0.06), 0 14px 28px -8px rgb(60 50 30 / 0.26),
-    0 30px 60px -16px rgb(60 50 30 / 0.24);
+  --shadow-note: 0 1px 1px rgb(60 50 30 / 0.06), 0 2px 4px rgb(60 50 30 / 0.07), 0 8px 16px -6px rgb(60 50 30 / 0.14);
+  --shadow-note-lift: 0 2px 3px rgb(60 50 30 / 0.06), 0 14px 28px -8px rgb(60 50 30 / 0.26), 0 30px 60px -16px rgb(60 50 30 / 0.24);
   --shadow-chrome: 0 1px 2px rgb(60 50 30 / 0.06), 0 8px 24px -8px rgb(60 50 30 / 0.18);
-
-  /* 圆角 */
   --radius-note: 3px;
   --radius-ui: 10px;
-
-  /* 字体 */
-  --font-ui: 'Inter', system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC',
-    'Source Han Sans SC', 'Microsoft YaHei', sans-serif;
-
-  /* 动效时长 */
+  --font-ui: 'Inter', system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', sans-serif;
   --dur-fast: 120ms;
   --dur-base: 200ms;
   --dur-slow: 320ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* 暗色：显式选择暗色时生效；“跟随系统”时由下方媒体查询生效（两处色值保持一致） */
+/* 显式选择暗色 */
 [data-theme='dark'] {
   color-scheme: dark;
   --board-bg: #1c1b19;
@@ -80,7 +62,6 @@
   --focus-ring: #8aa2ff;
   --overdue: #e6a066;
   --ok: #7cc49a;
-  /* 表单与按钮 */
   --accent: #ece7dc;
   --accent-ink: #1c1b19;
   --accent-hover: #ffffff;
@@ -90,8 +71,6 @@
   --field-border: rgb(255 248 230 / 0.14);
   --field-border-hover: rgb(255 248 230 / 0.28);
   --surface: #262522;
-
-  /* 便利贴：暗色（降低饱和度的深色调，单独设计，不是反色）——M0 初稿 */
   --note-lemon: #4a4329;
   --note-peach: #4d372b;
   --note-blossom: #4a3039;
@@ -104,15 +83,12 @@
   --note-ink-muted: rgb(239 233 220 / 0.55);
   --note-noise-opacity: 0.18;
   --note-noise-blend: soft-light;
-
-  --shadow-note:
-    0 1px 1px rgb(0 0 0 / 0.3), 0 2px 4px rgb(0 0 0 / 0.25), 0 8px 16px -6px rgb(0 0 0 / 0.45);
-  --shadow-note-lift:
-    0 2px 3px rgb(0 0 0 / 0.3), 0 14px 28px -8px rgb(0 0 0 / 0.55),
-    0 30px 60px -16px rgb(0 0 0 / 0.5);
+  --shadow-note: 0 1px 1px rgb(0 0 0 / 0.3), 0 2px 4px rgb(0 0 0 / 0.25), 0 8px 16px -6px rgb(0 0 0 / 0.45);
+  --shadow-note-lift: 0 2px 3px rgb(0 0 0 / 0.3), 0 14px 28px -8px rgb(0 0 0 / 0.55), 0 30px 60px -16px rgb(0 0 0 / 0.5);
   --shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
 }
 
+/* 跟随系统 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
@@ -127,8 +103,6 @@
     --focus-ring: #8aa2ff;
     --overdue: #e6a066;
     --ok: #7cc49a;
-  --ok: #7cc49a;
-    /* 表单与按钮 */
     --accent: #ece7dc;
     --accent-ink: #1c1b19;
     --accent-hover: #ffffff;
@@ -138,8 +112,6 @@
     --field-border: rgb(255 248 230 / 0.14);
     --field-border-hover: rgb(255 248 230 / 0.28);
     --surface: #262522;
-
-    /* 便利贴：暗色（降低饱和度的深色调，单独设计，不是反色）——M0 初稿 */
     --note-lemon: #4a4329;
     --note-peach: #4d372b;
     --note-blossom: #4a3039;
@@ -152,12 +124,8 @@
     --note-ink-muted: rgb(239 233 220 / 0.55);
     --note-noise-opacity: 0.18;
     --note-noise-blend: soft-light;
-
-    --shadow-note:
-      0 1px 1px rgb(0 0 0 / 0.3), 0 2px 4px rgb(0 0 0 / 0.25), 0 8px 16px -6px rgb(0 0 0 / 0.45);
-    --shadow-note-lift:
-      0 2px 3px rgb(0 0 0 / 0.3), 0 14px 28px -8px rgb(0 0 0 / 0.55),
-      0 30px 60px -16px rgb(0 0 0 / 0.5);
+    --shadow-note: 0 1px 1px rgb(0 0 0 / 0.3), 0 2px 4px rgb(0 0 0 / 0.25), 0 8px 16px -6px rgb(0 0 0 / 0.45);
+    --shadow-note-lift: 0 2px 3px rgb(0 0 0 / 0.3), 0 14px 28px -8px rgb(0 0 0 / 0.55), 0 30px 60px -16px rgb(0 0 0 / 0.5);
     --shadow-chrome: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
   }
 }

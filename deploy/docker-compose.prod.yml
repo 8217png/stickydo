@@ -38,7 +38,10 @@ services:
 
   web:
     image: stickydo-web:latest
-    build: ../web
+    # web 依赖 packages/core，构建上下文是仓库根目录
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
     restart: unless-stopped
     depends_on:
       - server

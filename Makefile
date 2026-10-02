@@ -1,9 +1,9 @@
 # Sticky-Do 常用命令
-#   make gen        由 api/openapi.yaml 和 SQL 生成 Go / TS 代码
+#   make gen        由 api/openapi.yaml 和 SQL 生成 Go / TS 代码，由设计 token 生成 CSS
 #   make db         启动本地 PostgreSQL + Redis（Docker）
 #   make dev        启动 API 服务（:8080），连接 make db 的数据库
 #   make web        启动前端开发服务器（:5173）
-#   make test       服务端测试（需要 Docker）+ 前端类型检查与单元测试
+#   make test       服务端测试（需要 Docker）+ packages/core 与前端的类型检查和单元测试
 #   make up / down  用 docker compose 启动 / 停止全部服务
 
 GOTOOL := cd server && go tool -modfile=tools/go.mod
@@ -20,7 +20,8 @@ gen-go:
 	$(GOTOOL) sqlc generate
 
 gen-ts:
-	cd web && npm run gen:api
+	npm run gen:api -w @stickydo/core
+	npm run gen:tokens -w web
 
 db:
 	$(COMPOSE) up -d postgres redis
@@ -37,7 +38,7 @@ test-server:
 	cd server && go vet ./... && STICKYDO_REQUIRE_DOCKER=1 go test -race ./...
 
 test-web:
-	cd web && npm run typecheck && npm test
+	npm run typecheck && npm test
 
 migrate-up:
 	$(GOTOOL) goose -dir migrations postgres '$(DEV_DB)' up

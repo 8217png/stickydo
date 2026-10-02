@@ -9,12 +9,13 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "build:extension": "tsc -b && vite build --mode extension",
-    "gen:api": "npx -y -p openapi-typescript@7.13.0 -p typescript@5.9.3 openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build -o storybook-static",
-    "test": "vitest run"
+    "test": "node scripts/gen-tokens.ts --check && vitest run",
+    "gen:tokens": "node scripts/gen-tokens.ts"
   },
   "dependencies": {
+    "@stickydo/core": "*",
     "@tiptap/core": "^3.31.4",
     "@tiptap/extension-list": "^3.31.4",
     "@tiptap/extensions": "^3.31.4",

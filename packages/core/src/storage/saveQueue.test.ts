@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { docFromText } from '../features/notes/doc'
+import { docFromText } from '../notes/doc'
 import type { Note } from '../sync/model'
-import type { NotesRepo, Persisted } from './notesRepo'
+import type { NotesRepo, Persisted } from './repo'
 import { createSaveQueue } from './saveQueue'
 
 const note = (id: string, text = id): Note => ({

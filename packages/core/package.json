@@ -1,0 +1,28 @@
+{
+  "name": "@stickydo/core",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Web 与移动端共用、与平台无关的代码：API 客户端、登录会话、同步、存储接口、正文工具、设计 token",
+  "exports": {
+    "./api": "./src/api/client.ts",
+    "./auth": "./src/auth/session.ts",
+    "./sync": "./src/sync/index.ts",
+    "./storage": "./src/storage/index.ts",
+    "./notes": "./src/notes/doc.ts",
+    "./design": "./src/design/tokens.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "gen:api": "npx -y -p openapi-typescript@7.13.0 -p typescript@5.9.3 openapi-typescript ../../api/openapi.yaml -o src/api/schema.d.ts"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

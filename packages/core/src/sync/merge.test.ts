@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { docFromText } from '../features/notes/doc'
+import { docFromText } from '../notes/doc'
 import { applyPushResults, collectChanges, commitLocal, mergePulled, patchSnapshot } from './merge'
 import type { Note, NotesData, RemoteNote } from './model'
 

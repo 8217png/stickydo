@@ -1,0 +1,11 @@
+# web/Dockerfile 以仓库根目录为构建上下文；只需要 package*.json、packages/、web/
+*
+!package.json
+!package-lock.json
+!packages/
+!web/
+**/node_modules
+**/dist
+**/dist-extension
+**/storybook-static
+**/*.tsbuildinfo
