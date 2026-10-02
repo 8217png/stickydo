@@ -161,7 +161,12 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = rc.SetReadDeadline(time.Time{})
 	_ = rc.SetWriteDeadline(time.Time{})
 
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: h.opts.OriginPatterns})
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: h.opts.OriginPatterns,
+		// Chrome 插件（chrome-extension://<id>）也可以连：插件登录后同步（E2）。
+		// 来源检查只是为了挡住普通网页；能否连上取决于第一条消息里的 Access Token
+		InsecureSkipVerify: isExtensionOrigin(r.Header.Get("Origin")),
+	})
 	if err != nil {
 		return // Accept 已经写好了错误响应
 	}
@@ -261,6 +266,11 @@ func write(ctx context.Context, ws *websocket.Conn, msg []byte) error {
 	wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	return ws.Write(wctx, websocket.MessageText, msg)
+}
+
+func isExtensionOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	return err == nil && u.Scheme == "chrome-extension" && u.Host != ""
 }
 
 // HostPatterns 把 CORS 设置里的地址（http://localhost:5173）转成 WebSocket 的来源匹配（localhost:5173）。

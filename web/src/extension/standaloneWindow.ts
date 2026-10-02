@@ -15,12 +15,20 @@ const BOUNDS_KEY = 'stickydo.ext.windowBounds'
 const ID_KEY = 'stickydo.ext.windowId'
 const DEFAULT_BOUNDS: Bounds = { width: 960, height: 720 }
 
-/** 从浮窗打开独立窗口；已经开着就切过去。随后关闭浮窗。 */
-export async function openStandaloneWindow() {
+/**
+ * 从浮窗打开独立窗口；已经开着就切过去。随后关闭浮窗。
+ * route：打开到某一页，例如 '/login'（浮窗一失去焦点就会关闭，登录这类需要授权弹窗的操作放到独立窗口里做）
+ */
+export async function openStandaloneWindow(route?: string) {
+  const url = chrome.runtime.getURL(`popup.html?window=1${route ? `#${route}` : ''}`)
   const id = load<number>(ID_KEY)
   if (id != null) {
     try {
       await chrome.windows.update(id, { focused: true })
+      if (route) {
+        const [tab] = await chrome.tabs.query({ windowId: id })
+        if (tab?.id != null) await chrome.tabs.update(tab.id, { url })
+      }
       window.close()
       return
     } catch {
@@ -29,7 +37,7 @@ export async function openStandaloneWindow() {
   }
   const b = load<Bounds>(BOUNDS_KEY) ?? DEFAULT_BOUNDS
   const win = await chrome.windows.create({
-    url: chrome.runtime.getURL('popup.html?window=1'),
+    url,
     type: 'popup',
     focused: true,
     width: Math.max(360, b.width),

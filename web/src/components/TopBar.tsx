@@ -106,7 +106,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
         <IconButton title="快捷键（?）" onClick={onHelp} className="max-sm:hidden">
           <rect x="1.5" y="4" width="13" height="8.5" rx="1.5" /><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M5 10h6" />
         </IconButton>
-        {surface === 'web' && <AccountMenu />}
+        <AccountMenu />
       </div>
     </header>
   )

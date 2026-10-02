@@ -93,6 +93,12 @@ func TestRealtimeRequiresAuth(t *testing.T) {
 	if _, err := recv(t, c, 4*time.Second); closeCode(err) != 4001 {
 		t.Fatalf("auth timeout: %v", err)
 	}
+	// Chrome 插件可以连（插件登录后同步）
+	ext := e.dialWS("chrome-extension://abcdefghijklmnopabcdefghijklmnop")
+	send(t, ext, map[string]string{"type": "auth", "token": "nope"})
+	if _, err := recv(t, ext, 3*time.Second); closeCode(err) != 4001 {
+		t.Fatalf("extension origin should reach auth step: %v", err)
+	}
 	// 其他网站的页面不能连
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

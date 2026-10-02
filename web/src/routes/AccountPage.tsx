@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button'
 import { Spinner } from '../components/ui/Spinner'
 import { TextField } from '../components/ui/TextField'
 import { useSession } from '../features/auth/session'
+import { serverOrigin } from '../api/server'
 import { AuthLayout, type Fields, FormError, useAuthSubmit } from './AuthPages'
 
 type Device = Schemas['Device']
@@ -23,7 +24,7 @@ export function AccountPage() {
   const user = useSession((s) => s.user)
   if (!user) return <Navigate to="/login" replace state={{ from: '/account' }} />
   return (
-    <AuthLayout wide title="账号与设备" subtitle={`${user.name} · ${user.email}`}>
+    <AuthLayout wide title="账号与设备" subtitle={[user.name, user.email, serverOrigin()].filter(Boolean).join(' · ')}>
       <section aria-labelledby="password-title">
         <h2 id="password-title" className="mb-3 text-[15px] font-semibold text-ink">
           修改密码

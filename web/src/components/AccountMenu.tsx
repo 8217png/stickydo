@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { useSession } from '../features/auth/session'
+import { surface } from '../extension/surface'
+import { openStandaloneWindow } from '../extension/standaloneWindow'
 import { type SyncStatus, syncNow, useSyncStatus } from '../sync/engine'
 
 const STATUS: Record<SyncStatus, { label: string; color: string; pulse?: boolean }> = {
@@ -46,6 +48,19 @@ export function AccountMenu() {
   }, [open])
 
   if (!user) {
+    // 插件浮窗：登录要申请访问服务器的权限，授权弹窗会让浮窗关掉，所以到独立窗口里登录
+    if (surface === 'ext-popup') {
+      return (
+        <button
+          type="button"
+          onClick={() => void openStandaloneWindow('/login')}
+          title="在独立窗口中登录，登录后在多台设备间同步"
+          className="ml-0.5 inline-flex h-8 items-center whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium text-ink transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-focus"
+        >
+          登录
+        </button>
+      )
+    }
     return (
       <Link
         to="/login"

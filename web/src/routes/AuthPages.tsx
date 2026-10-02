@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { type FormEvent, type ReactNode, type Ref, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -6,6 +6,8 @@ import { ApiError } from '../api/client'
 import { Button } from '../components/ui/Button'
 import { TextField } from '../components/ui/TextField'
 import { useSession } from '../features/auth/session'
+import { isExtension } from '../extension/surface'
+import { normalizeServer, requestServerPermission, serverOrigin, setServerOrigin } from '../api/server'
 
 // ---------- 布局 ----------
 
@@ -104,6 +106,47 @@ export function useAuthSubmit(fieldNames: string[]) {
 
 const looksLikeEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())
 
+// ---------- 插件：服务器地址（E2） ----------
+
+/** 插件要先填连哪台服务器（自己部署的 Sticky-Do）；网页版与服务端同源，不显示 */
+function ServerField({ inputRef, error, onInput }: { inputRef: Ref<HTMLInputElement>; error?: string; onInput: () => void }) {
+  if (!isExtension) return null
+  return (
+    <TextField
+      ref={inputRef}
+      id="auth-server"
+      name="server"
+      label="服务器"
+      inputMode="url"
+      autoComplete="url"
+      defaultValue={serverOrigin() ?? ''}
+      placeholder="notes.example.com"
+      hint="你部署的 Sticky-Do 地址"
+      error={error}
+      onInput={onInput}
+    />
+  )
+}
+
+function checkServer(raw: string | undefined, f: Fields): string | null {
+  if (!isExtension) return null
+  const origin = normalizeServer(raw ?? '')
+  if (!origin) f.server = '请输入服务器地址，例如 notes.example.com'
+  return origin
+}
+
+/**
+ * 插件：申请访问这台服务器的权限，然后记下地址。必须在点击（提交）的同一轮里直接调用，
+ * 中间不能先 await 别的，否则浏览器不弹授权框。
+ */
+async function applyServer(origin: string | null) {
+  if (!isExtension || !origin) return
+  if (!(await requestServerPermission(origin))) {
+    throw new ApiError({ status: 0, code: 'network', title: '需要允许访问这台服务器才能登录', fields: { server: '没有获得访问权限' } })
+  }
+  setServerOrigin(origin)
+}
+
 // ---------- 登录 ----------
 
 export function LoginPage() {
@@ -111,7 +154,8 @@ export function LoginPage() {
   const login = useSession((s) => s.login)
   const navigate = useNavigate()
   const location = useLocation()
-  const { fieldErrors, formError, pending, run, clearField } = useAuthSubmit(['email', 'password'])
+  const { fieldErrors, formError, pending, run, clearField } = useAuthSubmit(['server', 'email', 'password'])
+  const serverRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
 
@@ -121,15 +165,18 @@ export function LoginPage() {
     e.preventDefault()
     const email = emailRef.current?.value ?? ''
     const password = passwordRef.current?.value ?? ''
+    let origin: string | null = null
     void run(
       () => {
         const f: Fields = {}
+        origin = checkServer(serverRef.current?.value, f)
         if (!email.trim()) f.email = '请输入邮箱'
         else if (!looksLikeEmail(email)) f.email = '请输入有效的邮箱地址'
         if (!password) f.password = '请输入密码'
         return f
       },
       async () => {
+        await applyServer(origin)
         const u = await login(email, password)
         toast(`欢迎回来，${u.name}`)
         const from = (location.state as { from?: string } | null)?.from
@@ -153,6 +200,7 @@ export function LoginPage() {
     >
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
         <FormError message={formError} />
+        <ServerField inputRef={serverRef} error={fieldErrors.server || undefined} onInput={() => clearField('server')} />
         <TextField
           ref={emailRef}
           id="login-email"
@@ -190,7 +238,8 @@ export function RegisterPage() {
   const user = useSession((s) => s.user)
   const register = useSession((s) => s.register)
   const navigate = useNavigate()
-  const { fieldErrors, formError, pending, run, clearField } = useAuthSubmit(['name', 'email', 'password'])
+  const { fieldErrors, formError, pending, run, clearField } = useAuthSubmit(['server', 'name', 'email', 'password'])
+  const serverRef = useRef<HTMLInputElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
@@ -202,9 +251,11 @@ export function RegisterPage() {
     const name = nameRef.current?.value.trim() ?? ''
     const email = emailRef.current?.value ?? ''
     const password = passwordRef.current?.value ?? ''
+    let origin: string | null = null
     void run(
       () => {
         const f: Fields = {}
+        origin = checkServer(serverRef.current?.value, f)
         if (name.length > 50) f.name = '名字最多 50 个字'
         if (!email.trim()) f.email = '请输入邮箱'
         else if (!looksLikeEmail(email)) f.email = '请输入有效的邮箱地址'
@@ -212,6 +263,7 @@ export function RegisterPage() {
         return f
       },
       async () => {
+        await applyServer(origin)
         const u = await register(email, password, name)
         toast(`注册成功，欢迎你，${u.name}`)
         navigate('/', { replace: true })
@@ -234,6 +286,7 @@ export function RegisterPage() {
     >
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
         <FormError message={formError} />
+        <ServerField inputRef={serverRef} error={fieldErrors.server || undefined} onInput={() => clearField('server')} />
         <TextField
           ref={nameRef}
           id="register-name"
@@ -241,7 +294,7 @@ export function RegisterPage() {
           label="名字"
           labelAside={<span className="text-[12px] text-ink-faint">可选</span>}
           autoComplete="nickname"
-          autoFocus
+          autoFocus={!isExtension}
           maxLength={50}
           placeholder="怎么称呼你"
           error={fieldErrors.name || undefined}

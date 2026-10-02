@@ -70,7 +70,13 @@
 - 浮窗大小：Chrome 插件浮窗不能原生拖边调整，由页面尺寸决定（上限 800×600）。左下角的把手修改页面尺寸，松手后记住；`public/boot.js` 在首帧前恢复，避免闪动。
 - 独立窗口：自由调整大小，用 `chrome.windows.onBoundsChanged` 记住大小和位置；已打开时再点按钮直接切过去。
 - MV3 默认 CSP 禁止内联脚本和远程代码：首帧脚本放在 `public/boot.js`，不加载在线字体。
-- 存储：与 Web 相同，用插件源下的 IndexedDB（Dexie）；浮窗与独立窗口通过 BroadcastChannel 实时同步。登录后的同步见 E2。
+- 存储：与 Web 相同，用插件源下的 IndexedDB（Dexie）；浮窗与独立窗口通过 BroadcastChannel 实时同步。
+- **登录与同步（E2）**：与网页版完全同一套代码——登录会话、同步引擎（§5）、实时通知（§5.6）、回收站都一样；不登录时仍是单机使用。
+  - **服务器地址**：插件运行在 `chrome-extension://` 下，登录 / 注册页多一个“服务器”栏，填自己部署的地址（例如 `notes.example.com`，规范成 origin 后记在 `localStorage` 的 `stickydo.server`，退出登录也保留）。构建时可用 `VITE_DEFAULT_SERVER` 预填。API 客户端先把请求发往占位地址，发送时换成当前服务器（`web/src/api/client.ts`）。
+  - **权限**：manifest 只声明 `optional_host_permissions`（`https://*/*`、`http://*/*`），安装时不要任何网站权限；登录 / 注册时用 `chrome.permissions.request` 只申请所填这一台服务器。有了权限，插件页面的跨域请求不受 CORS 限制，服务端不用把插件加进 `CORS_ORIGINS`。
+  - **实时通知**：WebSocket 不受 host 权限管，服务端对 `chrome-extension://` 来源放行（认证仍靠第一条消息里的 Access Token）。
+  - **登录在独立窗口里做**：浮窗一失去焦点就会关闭，授权弹窗会把它关掉，所以浮窗里的“登录”打开独立窗口的 `#/login`。插件用 HashRouter，登录、注册、账号与设备页与网页版共用。
+  - 第一次登录时插件里的本机便利贴并入账号（与网页版相同，§5.5）；设备列表里显示为“Chrome 插件”。
 
 ### 移动端（后期）：React Native (Expo)
 
@@ -225,7 +231,7 @@ POST /api/v1/sync/push
 - **第一次登录时，本机（未登录时）的便利贴并入账号**，随后上传。
 - 退出登录后回到“本机”那一份；账号的数据仍缓存在本机，下次登录立即出现，再与服务端同步。共用电脑时，退出后别人看不到你的便利贴。
 - **存储**：IndexedDB（Dexie，库名 `stickydo`），表 `notes` / `tombstones` / `boards` / `boardTombstones`（M4 加的看板，Dexie 版本 2）/ `trash`（M5 的回收站，版本 3）以 `[owner+id]` 为主键，`meta` 记录每个归属的同步游标；每次保存只写变化的行。浏览器不允许使用 IndexedDB 时（例如部分隐私模式）退回 localStorage，规则不变。
-  - 读取是异步的：读完之前白板不显示便利贴，也不显示空状态，避免闪烁；首批便利贴不播放入场动画。
+  - 读取是异步的：读完之前白板不显示便利贴，也不显示空状态，避免闪烁；首批便利贴不播放入场动画。读取期间（以及登录、退出切换数据时）已经做的编辑不会被读出的数据覆盖。
   - 多个标签页（以及插件的浮窗和独立窗口）通过 BroadcastChannel 互相通知：收到通知时先等本页的保存完成，再重新读取。因为按行写入，两个页面同时改不同的便利贴不会互相覆盖。
   - 第一次打开时，自动把 localStorage 里的旧数据（M2 的各归属数据、M0/M1 的 Markdown 便利贴）迁移进来，确认写入成功后删除旧数据。
   - 登录状态、主题等设置很小，且要在首帧前同步读到，仍放在 localStorage。
