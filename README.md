@@ -42,6 +42,20 @@ docker save stickydo-server stickydo-web | gzip | ssh <服务器> 'gunzip | dock
 # 服务器上：docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
 ```
 
+### 数据库备份
+
+`deploy/backup.sh` 用 `pg_dump` 备份到 `backups/`（自定义格式，已压缩），确认文件可读后才算成功，保留最近 14 天。每天定时执行：
+
+```bash
+cat > /etc/cron.d/stickydo-backup <<'CRON'
+30 3 * * * root /path/to/sticky-do/deploy/backup.sh >> /var/log/stickydo-backup.log 2>&1
+CRON
+```
+
+恢复：`deploy/restore.sh backups/stickydo-<时间>.dump`。会先备份当前数据，再停掉 API、在一个事务里覆盖数据库，最后重新启动 API。
+
+备份和数据库在同一台机器上，只能防误删和数据损坏，防不了整台服务器出问题；重要数据建议再定期复制到别处（如对象存储）。
+
 ## Chrome 插件（单机版）
 
 不登录、不连服务器也能用，数据保存在本机。
