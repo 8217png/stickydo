@@ -241,22 +241,35 @@ sticky-do/
 │   ├── queries/                # sqlc 使用的 .sql 文件
 │   ├── tools/                  # 代码生成工具（sqlc、oapi-codegen、goose）的独立 go.mod
 │   └── Dockerfile
+├── package.json                # npm workspaces：packages/*、web
+├── packages/
+│   └── core/                   # @stickydo/core：Web 与移动端共用、与平台无关（不用 window / DOM / localStorage，有测试守着）
+│       └── src/
+│           ├── api/            # OpenAPI 生成的类型（schema.d.ts）、createApiClient、ApiError
+│           ├── auth/           # 登录会话：Token 刷新、401 重试（存储由各端注入）
+│           ├── sync/           # 同步：模型、合并规则（纯函数）、同步引擎（便利贴状态与触发时机由各端注入）
+│           ├── storage/        # NotesRepo 接口、保存队列（失败重试）
+│           ├── notes/          # 正文（Tiptap JSON）读写工具，不依赖 Tiptap
+│           └── design/         # 设计 token（唯一来源）
 ├── web/                        # React（Web 与 Chrome 插件共用）
 │   ├── index.html              # Web 入口
 │   ├── popup.html              # Chrome 插件入口（浮窗 / 独立窗口）
 │   ├── extension/              # manifest.json、图标
 │   └── src/
-│       ├── api/                # OpenAPI 生成的类型（schema.d.ts）与客户端
-│       ├── sync/               # 同步：合并规则（纯函数，有单元测试）+ 同步引擎（将抽到 packages/core）
-│       ├── storage/            # 本地存储：IndexedDB（Dexie），退路 localStorage
-│       ├── design/             # 设计 token、主题
+│       ├── api/                # 用 VITE_API_BASE 创建 API 客户端
+│       ├── sync/               # 接上 core 的同步引擎：便利贴状态、Web Locks、切回页面 / 网络恢复时同步
+│       ├── storage/            # NotesRepo 的 Web 实现：IndexedDB（Dexie），退路 localStorage
+│       ├── design/             # tokens.css（由 scripts/gen-tokens.ts 根据 core 的 token 生成）
 │       ├── extension/          # 插件专用：浮窗尺寸、独立窗口
 │       ├── features/{notes,todos,boards,auth,capture}/
 │       ├── components/         # 含 ui/ 基础组件（Storybook：npm run storybook）
 │       └── routes/             # 白板页、登录 / 注册页
 ├── docs/                       # 设计文档
 ├── deploy/
-│   └── docker-compose.yml      # postgres + redis + server
+│   ├── docker-compose.yml      # 本地开发：postgres + redis + server
+│   ├── docker-compose.prod.yml # 生产：postgres + server + web（nginx），只有 web 对外
+│   ├── backup.sh / restore.sh  # 数据库每日备份与恢复
+│   └── .env.example
 └── Makefile                    # make gen / db / dev / web / test / up
 ```
 

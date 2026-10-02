@@ -1,5 +1,5 @@
-import type { NoteColor } from '../design/colors'
-import type { NoteDoc } from '../features/notes/doc'
+import type { NoteColor } from '../design/tokens'
+import type { NoteDoc } from '../notes/doc'
 
 /** 本地的便利贴（docs/architecture.md §5.1） */
 export interface Note {

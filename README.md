@@ -2,13 +2,16 @@
 
 便利贴 + 待办事项应用。第一期为 Go 服务端 + React Web 前端，后期支持 Android 与 iOS。
 
-> 当前进度：M2（Tiptap 编辑器、本地优先 + 登录后同步）已完成，设计文档见 [docs/](docs/README.md)。
+> 当前进度：M2（Tiptap 编辑器、本地优先 + 登录后同步）与 P0（抽出 Web / 移动端共用的 `packages/core`）已完成，设计文档见 [docs/](docs/README.md)。
 
 ## 本地开发
 
 需要 Go 1.26+、Node 22+、Docker。
 
+前端是 npm workspaces：`packages/core`（Web 与移动端共用、与平台无关的代码）+ `web/`。依赖在仓库根目录安装一次：
+
 ```bash
+npm install  # 在仓库根目录
 make db      # 启动 PostgreSQL + Redis（Docker）
 make dev     # 启动 API 服务 :8080（启动时自动执行数据库迁移）
 make web     # 另开终端：启动前端 :5173，/api 自动代理到 :8080
@@ -18,8 +21,8 @@ make web     # 另开终端：启动前端 :5173，/api 自动代理到 :8080
 
 | 命令 | 作用 |
 |---|---|
-| `make gen` | 改了 `api/openapi.yaml` 或 SQL 之后，重新生成 Go / TS 代码 |
-| `make test` | 服务端测试（含连真实 PostgreSQL 的集成测试，需要 Docker）+ 前端类型检查与单元测试 |
+| `make gen` | 改了 `api/openapi.yaml`、SQL 或设计 token（`packages/core/src/design/tokens.ts`）之后，重新生成 Go / TS 代码和 `tokens.css` |
+| `make test` | 服务端测试（含连真实 PostgreSQL 的集成测试，需要 Docker）+ `packages/core` 与 `web` 的类型检查和单元测试 |
 | `make up` | 用 docker compose 启动全部服务（PostgreSQL、Redis、API） |
 | `cd web && npm run storybook` | 基础组件和页面的 Storybook（:6006） |
 
@@ -61,9 +64,8 @@ CRON
 不登录、不连服务器也能用，数据保存在本机。
 
 ```bash
-cd web
-npm install
-npm run build:extension   # 输出到 web/dist-extension/
+npm install                        # 在仓库根目录
+npm run build:extension -w web     # 输出到 web/dist-extension/
 ```
 
 1. 打开 `chrome://extensions`，右上角开启「开发者模式」

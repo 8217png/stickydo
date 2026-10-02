@@ -1,4 +1,4 @@
-import type { NotesRepo, Persisted } from './notesRepo'
+import type { NotesRepo, Persisted } from './repo'
 
 /**
  * 按顺序把便利贴写入本地存储，只写变化的行。

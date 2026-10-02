@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { docFromText } from '../features/notes/doc'
-import type { Note } from '../sync/model'
-import { IdbNotesRepo, migrateFromLocalStorage, type Persisted } from './notesRepo'
+import type { Note } from '@stickydo/core/sync'
+import type { Persisted } from '@stickydo/core/storage'
+import { IdbNotesRepo, migrateFromLocalStorage } from './notesRepo'
 
 const note = (id: string, text: string, over: Partial<Note> = {}): Note => ({
   id, content: docFromText(text), color: 'lemon', x: 0, y: 0, w: 220, h: 200, z: 1,

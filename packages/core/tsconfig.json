@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // DOM 只为了 fetch / Request / Response 等类型（React Native 也提供）；
+    // 不要用 window、document、localStorage、indexedDB，见 src/platform.test.ts
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": []
+  },
+  "include": ["src"],
+  // 用到 Node 的 fs / path，只由 vitest 运行；core 不引入 @types/node
+  "exclude": ["src/platform.test.ts"]
+}
