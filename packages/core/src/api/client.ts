@@ -37,7 +37,23 @@ export function toApiError(error: unknown, response?: Response): ApiError {
 /**
  * 创建 API 客户端。baseUrl 例如 Web 的 /api/v1（同源）或移动端的 https://<服务器>/api/v1。
  * 认证由 createSession（../auth/session.ts）以中间件的形式加上。
+ * fetch：自定义发送请求（例如 Chrome 插件的服务器地址可以在运行时更改）。
  */
-export function createApiClient(baseUrl: string): ApiClient {
-  return createClient<paths>({ baseUrl })
+export function createApiClient(baseUrl: string, opts: { fetch?: (req: Request) => Promise<Response> } = {}): ApiClient {
+  return createClient<paths>({ baseUrl, ...(opts.fetch ? { fetch: opts.fetch } : {}) })
 }
+
+/** 服务器地址规范成 origin（插件、移动端填写服务器时用）：补上 https://，去掉路径和末尾的斜杠；不像网址时返回 null */
+export function normalizeServer(input: string): string | null {
+  const s = input.trim()
+  if (!s) return null
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `https://${s}`)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    if (!u.hostname) return null
+    return u.origin
+  } catch {
+    return null
+  }
+}
+

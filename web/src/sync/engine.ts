@@ -1,6 +1,5 @@
 import { createRealtime, createSyncEngine } from '@stickydo/core/sync'
-import { api, API_BASE } from '../api/client'
-import { surface } from '../extension/surface'
+import { api, apiBase } from '../api/client'
 import { accessToken, useSession } from '../features/auth/session'
 import { applySyncResult, hydrateNotes, LOCAL_OWNER, setSyncCursor, switchOwner, useNotes } from '../features/notes/store'
 import { bindStore } from '../lib/bindStore'
@@ -42,9 +41,9 @@ const engine = createSyncEngine({
 export const useSyncStatus = bindStore(engine.status)
 export const syncNow = engine.syncNow
 
-/** 实时通知的地址：API 地址换成 ws(s) 协议 */
+/** 实时通知的地址：API 地址（插件为所选的服务器）换成 ws(s) 协议 */
 function realtimeUrl() {
-  const base = new URL(API_BASE, location.href)
+  const base = new URL(apiBase())
   base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${base.href.replace(/\/$/, '')}/sync/ws`
 }
@@ -61,8 +60,8 @@ const realtime = createRealtime({
 let started = false
 
 export function startSyncEngine() {
-  // Chrome 插件目前单机使用，不同步
-  if (started || surface !== 'web') return
+  // Chrome 插件登录后同样同步（E2）；没登录时引擎不做任何事
+  if (started) return
   started = true
   engine.start()
 

@@ -59,13 +59,15 @@ CRON
 
 备份和数据库在同一台机器上，只能防误删和数据损坏，防不了整台服务器出问题；重要数据建议再定期复制到别处（如对象存储）。
 
-## Chrome 插件（单机版）
+## Chrome 插件
 
-不登录、不连服务器也能用，数据保存在本机。
+不登录、不连服务器也能用，数据保存在本机；登录后与网页版和其他设备同步。
 
 ```bash
 npm install                        # 在仓库根目录
 npm run build:extension -w web     # 输出到 web/dist-extension/
+# 可选：预填登录页的服务器地址
+VITE_DEFAULT_SERVER=https://notes.example.com npm run build:extension -w web
 ```
 
 1. 打开 `chrome://extensions`，右上角开启「开发者模式」
@@ -74,6 +76,7 @@ npm run build:extension -w web     # 输出到 web/dist-extension/
 
 - 拖浮窗左下角的把手调整大小，会记住；双击把手恢复默认大小。浮窗最大 800×600（Chrome 的限制）
 - 点浮窗右上角的 ↗ 在独立窗口打开，独立窗口可以自由调整大小，大小和位置也会记住
+- 登录：点右上角的「登录」，在独立窗口里填服务器地址（你部署 Sticky-Do 的地址）、邮箱和密码。Chrome 会询问是否允许访问这台服务器，允许后才能登录；不需要改服务端配置
 
 ## License
 

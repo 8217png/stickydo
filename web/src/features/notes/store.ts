@@ -263,7 +263,7 @@ function storedUserId(): string | null {
 }
 
 // 页面加载时就读当前账号的数据，不会先闪一下“本机”的便利贴
-const initialOwner = surface === 'web' ? (storedUserId() ?? LOCAL_OWNER) : LOCAL_OWNER
+const initialOwner = storedUserId() ?? LOCAL_OWNER
 
 export const useNotes = create<NotesState>()((set, get) => {
   /** 所有本地编辑都经过这里：标记改动、记录墓碑（sync/merge.ts commitLocal / commitBoards） */
@@ -676,7 +676,18 @@ export function hydrateNotes(): Promise<void> {
     const owner = useNotes.getState().owner
     const { data, saved } = await loadOwner(owner)
     saves.markStored(owner, saved)
-    useNotes.setState({ ...data, trash: purgeTrash(data.trash ?? []), hydrated: true })
+    // 读取期间已经新建的便利贴、看板（例如页面刚打开就双击）保留下来，不被读出的数据覆盖
+    useNotes.setState((cur) => {
+      const ids = new Set(data.notes.map((n) => n.id))
+      const boardIds = new Set(data.boards.map((b) => b.id))
+      return {
+        ...data,
+        notes: [...data.notes, ...cur.notes.filter((n) => !ids.has(n.id))],
+        boards: [...data.boards, ...cur.boards.filter((b) => !boardIds.has(b.id))],
+        trash: purgeTrash(data.trash ?? []),
+        hydrated: true,
+      }
+    })
   })()
   return hydrating
 }
@@ -694,9 +705,13 @@ export async function switchOwner(owner: string, opts: { mergeLocal?: boolean } 
 
   const { data, saved } = await loadOwner(owner)
   saves.markStored(owner, saved)
+  // 读取期间用户可能还在编辑（例如刚注册完马上双击新建）：以现在的状态为准，不丢这期间的改动
+  const cur = useNotes.getState()
+  const latest = cur.owner === s.owner ? cur : s
+  if (latest !== s) persistNow(s.owner, snapshotOf(latest))
   const next: Persisted = { ...data, notes: [...data.notes], boards: [...data.boards] }
   if (opts.mergeLocal && owner !== LOCAL_OWNER) {
-    const local = s.owner === LOCAL_OWNER ? snapshotOf(s) : ((await readPersisted(LOCAL_OWNER)) ?? emptyPersisted())
+    const local = s.owner === LOCAL_OWNER ? snapshotOf(latest) : ((await readPersisted(LOCAL_OWNER)) ?? emptyPersisted())
     const existing = new Set(next.notes.map((n) => n.id))
     const offset = maxZ(next.notes)
     const now = Date.now()

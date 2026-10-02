@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { MotionConfig } from 'motion/react'
-import { BrowserRouter, Route, Routes } from 'react-router'
+import { BrowserRouter, HashRouter, Route, Routes } from 'react-router'
 import { Toaster } from 'sonner'
 import { useSettings } from './features/settings'
 import { surface } from './extension/surface'
@@ -37,29 +37,27 @@ function useResolvedTheme() {
   return theme
 }
 
+const Router = surface === 'web' ? BrowserRouter : HashRouter
+
 export default function App() {
   const theme = useResolvedTheme()
   return (
     // 遵循系统的“减少动态效果”设置
     <MotionConfig reducedMotion="user">
-      {surface === 'web' ? (
-        <BrowserRouter>
-          <LoadBoundary>
-            <Suspense fallback={null}>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route path="/account" element={<AccountPage />} />
-                {/* 其余路径都显示白板（例如部署在子路径下时） */}
-                <Route path="*" element={<BoardPage />} />
-              </Routes>
-            </Suspense>
-          </LoadBoundary>
-        </BrowserRouter>
-      ) : (
-        // Chrome 插件：单机使用，没有账号入口
-        <BoardPage />
-      )}
+      {/* 插件页面是 popup.html，用 # 后面的路径（#/login），网页版用正常的路径 */}
+      <Router>
+        <LoadBoundary>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/account" element={<AccountPage />} />
+              {/* 其余路径都显示白板（例如部署在子路径下时） */}
+              <Route path="*" element={<BoardPage />} />
+            </Routes>
+          </Suspense>
+        </LoadBoundary>
+      </Router>
       <Toaster
         theme={theme}
         position="bottom-center"

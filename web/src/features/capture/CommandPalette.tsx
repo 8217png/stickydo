@@ -246,7 +246,7 @@ function Palette({ onHelp }: { onHelp: () => void }) {
               <Item value="快捷键 速查 help shortcuts" onSelect={run(onHelp)} shortcut="?" icon={<KeyIcon />}>
                 快捷键速查
               </Item>
-              {surface === 'web' && <AccountCommands />}
+              <AccountCommands />
               {surface === 'ext-popup' && (
                 <Item value="在独立窗口打开 window" onSelect={run(() => void openStandaloneWindow())} icon={<WindowIcon />}>
                   在独立窗口打开
@@ -290,7 +290,12 @@ function AccountCommands() {
   const navigate = useNavigate()
   if (!user) {
     return (
-      <Item value="登录 注册 账号 login" onSelect={run(() => navigate('/login'))} icon={<UserIcon />}>
+      <Item
+        value="登录 注册 账号 login"
+        // 插件浮窗里到独立窗口登录（见 AccountMenu）
+        onSelect={run(() => (surface === 'ext-popup' ? void openStandaloneWindow('/login') : navigate('/login')))}
+        icon={<UserIcon />}
+      >
         登录 / 注册
       </Item>
     )
