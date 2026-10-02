@@ -106,6 +106,7 @@ export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
       className="note-shell"
       data-note={note.id}
       data-selected={selected}
+      data-editing={editing}
       position={{ x: note.x, y: note.y }}
       size={{ width: note.w, height: note.h }}
       style={{
@@ -177,13 +178,15 @@ export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
         layoutId={morph ? `paper-${note.id}` : undefined}
         className="note-paper h-full w-full"
         data-lifted={lifted}
+        data-editing={editing}
         style={{
           backgroundColor: noteColorVar(note.color),
           outline: selected ? '2px solid var(--focus-ring)' : '2px solid transparent',
           outlineOffset: 3,
         }}
         initial={{ scale: 0.6, opacity: 0, rotate: rotate - 8, y: -12 }}
-        animate={{ scale: lifted ? 1.035 : 1, opacity: 1, rotate, y: 0 }}
+        // 触屏长按满 2 秒：再放大一点，提示松手就进入编辑
+        animate={{ scale: longPress.armed ? 1.07 : lifted ? 1.035 : 1, opacity: 1, rotate, y: 0 }}
         exit={{ scale: 0.85, opacity: 0, transition: { duration: 0.18, ease: 'easeIn' } }}
         transition={SPRING}
         onPointerDown={longPress.onPointerDown}
@@ -230,6 +233,8 @@ export const ListNote = memo(function ListNote({ note, morph, animateLayout }: P
       <motion.div
         layoutId={morph ? `paper-${note.id}` : undefined}
         className="note-paper w-full"
+        data-editing={editing}
+        animate={{ scale: longPress.armed ? 1.03 : 1 }}
         style={{
           backgroundColor: noteColorVar(note.color),
           outline: selected ? '2px solid var(--focus-ring)' : '2px solid transparent',
