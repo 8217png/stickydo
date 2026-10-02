@@ -37,7 +37,14 @@ cp deploy/.env.example deploy/.env    # 填入随机的数据库密码和 JWT �
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
 ```
 
-然后打开 `http://<服务器>:8080`（端口由 `STICKYDO_HTTP_PORT` 设置）。服务器拉取依赖慢时，可以在本机构建镜像后传过去：
+然后打开 `http://<服务器>:8080`（端口由 `STICKYDO_HTTP_PORT` 设置）。
+
+**HTTPS**：建议在宿主机的反向代理（nginx、1Panel 的 openresty 等）上配置域名和证书，转发到 `127.0.0.1:8080`，并且：
+- 设置 `proxy_set_header X-Real-IP $remote_addr`，登录限流才能按真实的客户端 IP 计算；
+- 转发 WebSocket：`proxy_http_version 1.1`、`Upgrade`、`Connection` 请求头（实时同步用）；
+- 在 `deploy/.env` 里设置 `STICKYDO_HTTP_PORT=127.0.0.1:8080`，8080 只在本机监听，外网只能经 HTTPS 访问。
+
+服务器拉取依赖慢时，可以在本机构建镜像后传过去：
 
 ```bash
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.example build

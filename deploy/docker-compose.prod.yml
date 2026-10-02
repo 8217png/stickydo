@@ -47,6 +47,7 @@ services:
     depends_on:
       - server
     ports:
+      # 可以写成 127.0.0.1:8080，只让宿主机上的反向代理访问
       - "${STICKYDO_HTTP_PORT:-8080}:80"
     mem_limit: 64m
 
