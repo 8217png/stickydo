@@ -11,7 +11,8 @@
     "./storage": "./src/storage/index.ts",
     "./notes": "./src/notes/doc.ts",
     "./design": "./src/design/tokens.ts",
-    "./capture": "./src/capture/index.ts"
+    "./capture": "./src/capture/index.ts",
+    "./capture/parse": "./src/capture/parse.ts"
   },
   "scripts": {
     "typecheck": "tsc -b",

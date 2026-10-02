@@ -1,6 +1,7 @@
 import type { JSONContent, NoteDoc } from '../notes/doc'
 import { docFromText } from '../notes/doc'
-import { type Capture, type Due, dueFromAttr, dueToAttr, type Priority } from './parse'
+import { type Due, dueFromAttr, dueToAttr, type Priority } from './due'
+import type { Capture } from './parse'
 
 /**
  * 待办就是便利贴里的待办项（Tiptap 的 taskItem），时间、优先级、标签是它的属性：

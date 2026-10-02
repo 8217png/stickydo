@@ -33,6 +33,20 @@ type Auth struct {
 	log        *slog.Logger
 	// Now 可在测试中替换
 	Now func() time.Time
+	// Sessions 在设备被吊销时断开它的实时连接（可为空）
+	Sessions SessionCloser
+}
+
+// SessionCloser 断开实时连接（realtime.Hub 实现）
+type SessionCloser interface {
+	DisconnectDevice(user, device uuid.UUID)
+	DisconnectOthers(user, keep uuid.UUID)
+}
+
+func (s *Auth) closeDevice(user, device uuid.UUID) {
+	if s.Sessions != nil {
+		s.Sessions.DisconnectDevice(user, device)
+	}
 }
 
 func NewAuth(pool *pgxpool.Pool, tokens *auth.Tokens, refreshTTL time.Duration, log *slog.Logger) *Auth {
@@ -234,6 +248,7 @@ func (s *Auth) handleUnknownRefreshToken(ctx context.Context, hash []byte, now t
 		if _, err := s.q.RevokeDevice(ctx, repo.RevokeDeviceParams{ID: dev.ID, UserID: dev.UserID}); err != nil {
 			return err
 		}
+		s.closeDevice(dev.UserID, dev.ID)
 		s.log.Warn("refresh token reuse detected, device revoked",
 			slog.String("user_id", dev.UserID.String()), slog.String("device_id", dev.ID.String()))
 	}
@@ -260,7 +275,19 @@ func (s *Auth) Authenticate(ctx context.Context, accessToken string) (auth.Princ
 
 func (s *Auth) Logout(ctx context.Context, p auth.Principal) error {
 	_, err := s.q.RevokeDevice(ctx, repo.RevokeDeviceParams{ID: p.DeviceID, UserID: p.UserID})
+	if err == nil {
+		s.closeDevice(p.UserID, p.DeviceID)
+	}
 	return err
+}
+
+// DeviceActive 设备是否仍然有效（没有退出、没有被吊销）。实时连接定期检查。
+func (s *Auth) DeviceActive(ctx context.Context, p auth.Principal) (bool, error) {
+	_, err := s.q.GetActiveDevice(ctx, repo.GetActiveDeviceParams{ID: p.DeviceID, UserID: p.UserID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (s *Auth) Me(ctx context.Context, p auth.Principal) (repo.User, error) {
@@ -276,7 +303,7 @@ func (s *Auth) ChangePassword(ctx context.Context, p auth.Principal, current, ne
 	if msg := checkPassword(next); msg != "" {
 		return apperr.Validation(map[string]string{"new_password": msg})
 	}
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		user, err := q.GetUserByID(ctx, p.UserID)
 		if err != nil {
@@ -298,6 +325,10 @@ func (s *Auth) ChangePassword(ctx context.Context, p auth.Principal, current, ne
 		}
 		return q.RevokeOtherDevices(ctx, repo.RevokeOtherDevicesParams{UserID: user.ID, KeepID: p.DeviceID})
 	})
+	if err == nil && s.Sessions != nil {
+		s.Sessions.DisconnectOthers(p.UserID, p.DeviceID)
+	}
+	return err
 }
 
 func (s *Auth) ListDevices(ctx context.Context, p auth.Principal) ([]DeviceView, error) {
@@ -320,6 +351,7 @@ func (s *Auth) RevokeDevice(ctx context.Context, p auth.Principal, deviceID uuid
 	if n == 0 {
 		return apperr.ErrNotFound
 	}
+	s.closeDevice(p.UserID, deviceID)
 	return nil
 }
 

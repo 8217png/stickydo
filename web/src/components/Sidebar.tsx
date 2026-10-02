@@ -75,6 +75,7 @@ function useNarrow() {
 function SidebarPanel() {
   const view = useView((s) => s.view)
   const notes = useNotes((s) => s.notes)
+  const trashCount = useNotes((s) => s.trash.length)
   const boards = useNotes((s) => s.boards)
   const todos = useTodos()
   const now = useNow()
@@ -182,6 +183,17 @@ function SidebarPanel() {
               />
             ))
           )}
+        </Section>
+
+        <Section>
+          <Item
+            icon={<TrashIcon />}
+            label="回收站"
+            count={trashCount}
+            muted
+            active={active({ kind: 'trash' })}
+            onClick={() => go({ kind: 'trash' })}
+          />
         </Section>
       </div>
     </nav>
@@ -515,6 +527,11 @@ const InboxIcon = () => (
   <Svg>
     <path d="M2 9.5l1.6-5.2A1 1 0 014.6 3.5h6.8a1 1 0 011 .8L14 9.5V12a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12z" />
     <path d="M2 9.5h3.5l1 1.5h3l1-1.5H14" />
+  </Svg>
+)
+const TrashIcon = () => (
+  <Svg>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" />
   </Svg>
 )
 const PlusIcon = () => (

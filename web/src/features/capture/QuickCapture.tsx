@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useIsPresent } from 'motion/react'
-import { type Capture, type CaptureTokenKind, formatDue, PRIORITY_LABEL, parseCapture } from '@stickydo/core/capture'
+import { type Capture, type CaptureTokenKind, formatDue, PRIORITY_LABEL } from '@stickydo/core/capture'
+import { parseCapture } from '@stickydo/core/capture/parse'
 import { createFromCapture } from './actions'
 import { closeCapture, useCommandUI } from './state'
 

@@ -27,6 +27,7 @@ import (
 	"github.com/8217png/stickydo/server/internal/auth"
 	"github.com/8217png/stickydo/server/internal/db"
 	httpserver "github.com/8217png/stickydo/server/internal/http"
+	"github.com/8217png/stickydo/server/internal/realtime"
 	"github.com/8217png/stickydo/server/internal/service"
 )
 
@@ -87,11 +88,14 @@ type env struct {
 	t     *testing.T
 	srv   *httptest.Server
 	clock *clock
+	hub   *realtime.Hub
 }
 
 type envOpts struct {
 	rateEvery time.Duration
 	rateBurst int
+	// 实时连接定期检查设备的间隔（0 为默认 5 分钟）
+	wsCheckEvery time.Duration
 }
 
 func newEnv(t *testing.T, opts ...envOpts) *env {
@@ -109,8 +113,14 @@ func newEnv(t *testing.T, opts ...envOpts) *env {
 	svc.Now = clk.Now
 	syncSvc := service.NewSync(pool)
 	syncSvc.Now = clk.Now
+	hub := realtime.NewHub(realtime.Options{
+		Authenticate: svc.Authenticate, Version: syncSvc.Version, DeviceActive: svc.DeviceActive,
+		OriginPatterns: []string{"localhost:5173"}, Log: log,
+		AuthTimeout: 2 * time.Second, PingInterval: time.Second, CheckEvery: o.wsCheckEvery,
+	})
+	svc.Sessions = hub
 	h, err := httpserver.New(httpserver.Deps{
-		Pool: pool, Auth: svc, Sync: syncSvc, Log: log, CORSOrigins: []string{"http://localhost:5173"},
+		Pool: pool, Auth: svc, Sync: syncSvc, Hub: hub, Log: log, CORSOrigins: []string{"http://localhost:5173"},
 		AuthRateEvery: o.rateEvery, AuthRateBurst: o.rateBurst,
 	})
 	if err != nil {
@@ -118,7 +128,7 @@ func newEnv(t *testing.T, opts ...envOpts) *env {
 	}
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, clock: clk}
+	return &env{t: t, srv: srv, clock: clk, hub: hub}
 }
 
 type resp struct {

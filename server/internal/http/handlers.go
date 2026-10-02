@@ -9,6 +9,7 @@ import (
 	"github.com/8217png/stickydo/server/internal/apperr"
 	"github.com/8217png/stickydo/server/internal/auth"
 	"github.com/8217png/stickydo/server/internal/http/api"
+	"github.com/8217png/stickydo/server/internal/realtime"
 	"github.com/8217png/stickydo/server/internal/repo"
 	"github.com/8217png/stickydo/server/internal/service"
 )
@@ -16,6 +17,7 @@ import (
 // handlers 实现由 api/openapi.yaml 生成的 StrictServerInterface。
 // 只返回成功响应；错误交给 writeProblem 统一处理。
 type handlers struct {
+	hub *realtime.Hub
 	pool *pgxpool.Pool
 	auth *service.Auth
 	sync *service.Sync

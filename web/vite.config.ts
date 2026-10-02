@@ -40,6 +40,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     // 开发时把 /api 转给本地 Go 服务（make dev）
-    server: { proxy: { '/api': 'http://localhost:8080' } },
+    // ws: true 同时转发实时通知的 WebSocket（/api/v1/sync/ws）
+    server: { proxy: { '/api': { target: 'http://localhost:8080', ws: true } } },
   }
 })

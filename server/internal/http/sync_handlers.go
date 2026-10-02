@@ -65,6 +65,10 @@ func (h *handlers) SyncPush(ctx context.Context, req api.SyncPushRequestObject) 
 	if err != nil {
 		return nil, err
 	}
+	if h.hub != nil && wroteAny(results, boardResults) {
+		// 通知这个用户的其他设备来拉取
+		h.hub.Notify(p.UserID, p.DeviceID, version)
+	}
 	out := make([]api.SyncPushResult, len(results))
 	for i, r := range results {
 		out[i] = api.SyncPushResult{Id: r.ID, Status: api.SyncPushResultStatus(r.Status)}
@@ -90,6 +94,20 @@ func (h *handlers) SyncPush(ctx context.Context, req api.SyncPushRequestObject) 
 		}
 	}
 	return api.SyncPush200JSONResponse{Results: out, BoardResults: boardOutResults, ServerVersion: version}, nil
+}
+
+func wroteAny(notes []service.PushResult, boards []service.BoardPushResult) bool {
+	for _, r := range notes {
+		if r.Status == service.PushApplied && r.Note != nil {
+			return true
+		}
+	}
+	for _, r := range boards {
+		if r.Status == service.PushApplied && r.Board != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func boardOut(b *repo.Board) api.Board {

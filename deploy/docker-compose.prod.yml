@@ -2,7 +2,8 @@
 #   cp deploy/.env.example deploy/.env   # 填入随机密钥
 #   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
 # 只有 web 对外开放端口；数据库和 API 只在 Docker 内部网络里可以访问。
-# Redis 在 M5（WebSocket 多实例）之前用不到，暂不启动。
+# 实时通知（WebSocket）目前是单实例的内存实现，Redis 要到多实例部署时才用到，暂不启动。
+# 回收站保留期：STICKYDO_TRASH_RETENTION（默认 720h），见 docs/architecture.md §5.7。
 name: stickydo
 
 services:

@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type { Board, Note, Tombstone } from '@stickydo/core/sync'
-import { emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/storage'
+import { emptyPersisted, type NotesRepo, type Persisted, type TrashItem } from '@stickydo/core/storage'
 
 /**
  * 便利贴的本地存储（docs/architecture.md §5.5），实现 @stickydo/core/storage 的 NotesRepo。
@@ -13,6 +13,7 @@ import { emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/s
 type NoteRow = Note & { owner: string }
 type TombRow = Tombstone & { owner: string }
 type BoardRow = Board & { owner: string }
+type TrashRow = TrashItem & { owner: string }
 interface MetaRow {
   owner: string
   cursor: number
@@ -24,6 +25,7 @@ class StickyDoDB extends Dexie {
   meta!: Table<MetaRow, string>
   boards!: Table<BoardRow, [string, string]>
   boardTombstones!: Table<TombRow, [string, string]>
+  trash!: Table<TrashRow, [string, string]>
 
   constructor(name: string) {
     super(name)
@@ -39,6 +41,8 @@ class StickyDoDB extends Dexie {
       boards: '[owner+id], owner',
       boardTombstones: '[owner+id], owner',
     })
+    // M5：回收站
+    this.version(3).stores({ trash: '[owner+id], owner' })
   }
 }
 
@@ -64,8 +68,8 @@ export class IdbNotesRepo implements NotesRepo {
   }
 
   async load(owner: string): Promise<Persisted | null> {
-    const { notes, tombstones, boards, boardTombstones, meta: metaTable } = this.db
-    return this.db.transaction('r', [notes, tombstones, boards, boardTombstones, metaTable], async () => {
+    const { notes, tombstones, boards, boardTombstones, trash, meta: metaTable } = this.db
+    return this.db.transaction('r', [notes, tombstones, boards, boardTombstones, trash, metaTable], async () => {
       const meta = await metaTable.get(owner)
       if (!meta) return null
       const rows = await Promise.all([
@@ -73,12 +77,14 @@ export class IdbNotesRepo implements NotesRepo {
         tombstones.where('owner').equals(owner).toArray(),
         boards.where('owner').equals(owner).toArray(),
         boardTombstones.where('owner').equals(owner).toArray(),
+        trash.where('owner').equals(owner).toArray(),
       ])
       return {
         notes: rows[0].map(strip),
         tombstones: rows[1].map(strip),
         boards: rows[2].map(strip),
         boardTombstones: rows[3].map(strip),
+        trash: rows[4].map(strip),
         cursor: meta.cursor,
       }
     })
@@ -86,17 +92,18 @@ export class IdbNotesRepo implements NotesRepo {
 
   async save(owner: string, prev: Persisted | null, next: Persisted): Promise<void> {
     const p = prev ?? emptyPersisted()
-    const { notes, tombstones, boards, boardTombstones, meta } = this.db
+    const { notes, tombstones, boards, boardTombstones, trash, meta } = this.db
     const write = async <T extends { id: string }>(table: Table<T & { owner: string }, [string, string]>, before: T[], after: T[]) => {
       const d = diff(before, after)
       if (d.put.length) await table.bulkPut(d.put.map((x) => ({ ...x, owner })))
       if (d.del.length) await table.bulkDelete(d.del.map((id) => [owner, id] as [string, string]))
     }
-    await this.db.transaction('rw', [notes, tombstones, boards, boardTombstones, meta], async () => {
+    await this.db.transaction('rw', [notes, tombstones, boards, boardTombstones, trash, meta], async () => {
       await write(notes, p.notes, next.notes)
       await write(tombstones, p.tombstones, next.tombstones)
       await write(boards, p.boards, next.boards)
       await write(boardTombstones, p.boardTombstones, next.boardTombstones)
+      await write(trash, p.trash, next.trash)
       if (!prev || prev.cursor !== next.cursor) await meta.put({ owner, cursor: next.cursor })
     })
   }

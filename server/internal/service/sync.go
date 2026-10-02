@@ -98,6 +98,11 @@ type PullResult struct {
 	HasMore       bool
 }
 
+// Version 用户当前的服务端版本（实时连接建立时告诉客户端）。
+func (s *Sync) Version(ctx context.Context, user uuid.UUID) (int64, error) {
+	return s.q.GetSyncSeq(ctx, user)
+}
+
 // Pull 返回 version > since 的便利贴和看板（含已删除的），按 version 递增。
 // 便利贴按 limit 分页；看板很少，每页带上同一版本区间内的全部看板。
 func (s *Sync) Pull(ctx context.Context, p auth.Principal, since int64, limit int) (PullResult, error) {

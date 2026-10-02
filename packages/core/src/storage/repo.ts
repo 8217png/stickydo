@@ -1,4 +1,4 @@
-import type { SyncData } from '../sync/model'
+import type { Note, SyncData } from '../sync/model'
 
 /**
  * 便利贴本地存储的接口（docs/architecture.md §5.5）：每个端各自实现，
@@ -8,7 +8,23 @@ import type { SyncData } from '../sync/model'
 export interface Persisted extends SyncData {
   /** 同步游标：上次拉取到的服务端版本 */
   cursor: number
+  /** 回收站：本机删除的、或在其他设备上被删除的便利贴，保留 30 天（只在本机，不同步） */
+  trash: TrashItem[]
 }
+
+export interface TrashItem {
+  /** 便利贴 id */
+  id: string
+  /** 删除前的便利贴 */
+  note: Note
+  /** 删除时间（毫秒） */
+  deletedAt: number
+  /** 删除时所在看板的名字（看板也可能已经删除） */
+  boardName?: string
+}
+
+/** 回收站保留多久 */
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 export interface NotesRepo {
   /** 实现方式，例如 indexeddb、localstorage、sqlite */
@@ -19,4 +35,4 @@ export interface NotesRepo {
   save(owner: string, prev: Persisted | null, next: Persisted): Promise<void>
 }
 
-export const emptyPersisted = (): Persisted => ({ notes: [], tombstones: [], boards: [], boardTombstones: [], cursor: 0 })
+export const emptyPersisted = (): Persisted => ({ notes: [], tombstones: [], boards: [], boardTombstones: [], cursor: 0, trash: [] })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { docFromText, docText, docTitle, markdownToDoc } from './doc'
+import { docFromText, docText, docTitle } from './doc'
+import { markdownToDoc } from './markdown'
 
 describe('markdownToDoc（旧便利贴迁移）', () => {
   it('第一行单独成段，作为标题', () => {

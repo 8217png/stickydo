@@ -50,6 +50,8 @@ export interface Session {
   store: StoreApi<SessionState>
   /** 换一个新的 Access Token；同一时间只发一个刷新请求。失败（会话失效）时退出登录并返回 null。 */
   refreshAccessToken: () => Promise<string | null>
+  /** 有效的 Access Token（快过期时先刷新）；未登录返回 null。实时连接认证时用 */
+  accessToken: () => Promise<string | null>
   /** 从存储读取登录信息（存储是异步的端在启动时调用） */
   restore: () => Promise<void>
   /** 登录信息在别处被修改了（例如另一个标签页登录、退出或刷新了令牌） */
@@ -228,5 +230,5 @@ export function createSession({ api, storage, device, initial }: SessionOptions)
     if (saved && !store.getState().refreshToken) adoptStored(saved)
   }
 
-  return { store, refreshAccessToken, restore, adoptStored }
+  return { store, refreshAccessToken, accessToken: validAccessToken, restore, adoptStored }
 }

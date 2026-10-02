@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { currentNoteSize, notesOnBoard, useNotes } from './store'
 import { StickyNote } from './StickyNote'
 import { setBoardViewport } from './viewport'
+import { MORPH_LIMIT } from '../view'
 
 const CANVAS_MARGIN = 480
 
@@ -12,8 +13,7 @@ export function Whiteboard({ boardId }: { boardId: string | null }) {
   const boards = useNotes((s) => s.boards)
   const notes = useMemo(() => notesOnBoard({ notes: allNotes, boards }, boardId), [allNotes, boards, boardId])
   const hydrated = useNotes((s) => s.hydrated)
-  const selectedId = useNotes((s) => s.selectedId)
-  const editingId = useNotes((s) => s.editingId)
+  const morph = notes.length <= MORPH_LIMIT
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const pointer = useRef<{ x: number; y: number } | null>(null)
@@ -86,7 +86,7 @@ export function Whiteboard({ boardId }: { boardId: string | null }) {
         {hydrated && (
           <AnimatePresence initial={false}>
             {notes.map((n) => (
-              <StickyNote key={n.id} note={n} selected={n.id === selectedId} editing={n.id === editingId} />
+              <StickyNote key={n.id} note={n} morph={morph} />
             ))}
           </AnimatePresence>
         )}

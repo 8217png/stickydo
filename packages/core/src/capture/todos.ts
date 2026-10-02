@@ -1,5 +1,5 @@
 import type { JSONContent, NoteDoc } from '../notes/doc'
-import { type Due, dueToDate, type Priority } from './parse'
+import { type Due, dueToDate, type Priority } from './due'
 import { todoMeta } from './todo'
 
 /**

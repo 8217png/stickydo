@@ -11,6 +11,7 @@ export type View =
   | { kind: 'upcoming' }
   | { kind: 'done' }
   | { kind: 'tag'; tag: string }
+  | { kind: 'trash' }
 
 export type TodoViewKind = 'today' | 'upcoming' | 'done' | 'tag'
 
@@ -28,6 +29,7 @@ function initialView(): View {
     case 'today':
     case 'upcoming':
     case 'done':
+    case 'trash':
       return { kind: v.kind }
     case 'tag':
       return typeof v.tag === 'string' && v.tag ? { kind: 'tag', tag: v.tag } : INBOX
@@ -87,6 +89,12 @@ const LAYOUT_KEY = 'stickydo.layout'
 export const useBoardLayout = create<{ layout: BoardLayout }>(() => ({
   layout: load<BoardLayout>(LAYOUT_KEY) === 'list' ? 'list' : 'board',
 }))
+
+/**
+ * 便利贴不多于这个数时才做共享元素过渡（layoutId）和列表里的让位动画：
+ * 带着 layoutId 的元素每次渲染都要测量位置，便利贴一多就卡（实测 120 张时每次换选中约 60ms，60 张以内没有长任务）。
+ */
+export const MORPH_LIMIT = 60
 
 export function setBoardLayout(layout: BoardLayout) {
   save(LAYOUT_KEY, layout)
