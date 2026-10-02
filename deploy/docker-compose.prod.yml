@@ -1,0 +1,50 @@
+# 生产部署：PostgreSQL + API 服务 + Web（nginx）
+#   cp deploy/.env.example deploy/.env   # 填入随机密钥
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+# 只有 web 对外开放端口；数据库和 API 只在 Docker 内部网络里可以访问。
+# Redis 在 M5（WebSocket 多实例）之前用不到，暂不启动。
+name: stickydo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stickydo
+      POSTGRES_PASSWORD: ${STICKYDO_DB_PASSWORD:?在 deploy/.env 中设置 STICKYDO_DB_PASSWORD}
+      POSTGRES_DB: stickydo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stickydo"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 512m
+
+  server:
+    image: stickydo-server:latest
+    build: ../server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      STICKYDO_DATABASE_URL: postgres://stickydo:${STICKYDO_DB_PASSWORD}@postgres:5432/stickydo?sslmode=disable
+      STICKYDO_JWT_SECRET: ${STICKYDO_JWT_SECRET:?在 deploy/.env 中设置 STICKYDO_JWT_SECRET}
+      STICKYDO_TRUST_PROXY: "true"
+      STICKYDO_LOG_FORMAT: json
+    mem_limit: 256m
+
+  web:
+    image: stickydo-web:latest
+    build: ../web
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${STICKYDO_HTTP_PORT:-8080}:80"
+    mem_limit: 64m
+
+volumes:
+  pgdata:

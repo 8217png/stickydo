@@ -25,6 +25,23 @@ make web     # 另开终端：启动前端 :5173，/api 自动代理到 :8080
 
 服务端配置用环境变量（前缀 `STICKYDO_`），见 `server/internal/config/config.go`。部署时务必设置随机生成的 `STICKYDO_JWT_SECRET`（至少 32 个字符）。
 
+## 部署
+
+服务器上需要 Docker（含 compose 插件）。只有 Web（nginx）对外开放一个端口，数据库和 API 只在 Docker 内部网络里可以访问。
+
+```bash
+cp deploy/.env.example deploy/.env    # 填入随机的数据库密码和 JWT 密钥（openssl rand -hex 32）
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+```
+
+然后打开 `http://<服务器>:8080`（端口由 `STICKYDO_HTTP_PORT` 设置）。服务器拉取依赖慢时，可以在本机构建镜像后传过去：
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.example build
+docker save stickydo-server stickydo-web | gzip | ssh <服务器> 'gunzip | docker load'
+# 服务器上：docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
+```
+
 ## Chrome 插件（单机版）
 
 不登录、不连服务器也能用，数据保存在本机。
