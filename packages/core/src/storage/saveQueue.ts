@@ -25,6 +25,7 @@ export const samePersisted = (a: Persisted | null | undefined, b: Persisted) =>
   a.tombstones === b.tombstones &&
   a.boards === b.boards &&
   a.boardTombstones === b.boardTombstones &&
+  a.trash === b.trash &&
   a.cursor === b.cursor
 
 export function createSaveQueue({ getRepo, onSaved, onError, onRecovered, retryMs = 3000 }: SaveQueueOptions) {

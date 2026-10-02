@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
-import { captureToDoc, parseCapture } from '@stickydo/core/capture'
+import { captureToDoc } from '@stickydo/core/capture'
+import { parseCapture } from '@stickydo/core/capture/parse'
 import { useNotes } from '../notes/store'
 import { nextNotePosition } from '../notes/viewport'
 

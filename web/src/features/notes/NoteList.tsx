@@ -4,6 +4,7 @@ import { readingOrder } from './layout'
 import { notesOnBoard, useNotes } from './store'
 import { ListNote } from './StickyNote'
 import { nextNotePosition } from './viewport'
+import { MORPH_LIMIT } from '../view'
 
 /**
  * 列表视图（docs/frontend-design.md §2.8）：当前看板的便利贴按阅读顺序（先上后下、先左后右）排成一列，
@@ -13,10 +14,9 @@ export function NoteList({ boardId }: { boardId: string | null }) {
   const allNotes = useNotes((s) => s.notes)
   const boards = useNotes((s) => s.boards)
   const hydrated = useNotes((s) => s.hydrated)
-  const selectedId = useNotes((s) => s.selectedId)
-  const editingId = useNotes((s) => s.editingId)
   const notes = useMemo(() => readingOrder(notesOnBoard({ notes: allNotes, boards }, boardId)), [allNotes, boards, boardId])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const small = notes.length <= MORPH_LIMIT
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
@@ -41,7 +41,7 @@ export function NoteList({ boardId }: { boardId: string | null }) {
         {hydrated && (
           <AnimatePresence initial={false} mode="popLayout">
             {notes.map((n) => (
-              <ListNote key={n.id} note={n} selected={n.id === selectedId} editing={n.id === editingId} />
+              <ListNote key={n.id} note={n} morph={small} animateLayout={small} />
             ))}
           </AnimatePresence>
         )}

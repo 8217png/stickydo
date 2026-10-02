@@ -3,7 +3,7 @@ import { Command } from 'cmdk'
 import { AnimatePresence, motion, useIsPresent } from 'motion/react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { parseCapture } from '@stickydo/core/capture'
+import { parseCapture } from '@stickydo/core/capture/parse'
 import { docText } from '../notes/doc'
 import { NOTE_SIZES, noteBoardId, noteTitle, sortedBoards, useNotes } from '../notes/store'
 import { collectTags, collectTodos } from '@stickydo/core/capture'
@@ -175,6 +175,9 @@ function Palette({ onHelp }: { onHelp: () => void }) {
               </Item>
               <Item value="收件箱 inbox" keywords={['sjx']} onSelect={run(() => setView({ kind: 'board', boardId: null }))} icon={<InboxIcon />}>
                 收件箱
+              </Item>
+              <Item value="回收站 trash 恢复 删除" keywords={['hsz']} onSelect={run(() => setView({ kind: 'trash' }))} icon={<TrashIcon />}>
+                回收站
               </Item>
               {sorted.map((b) => (
                 <Item
@@ -375,3 +378,4 @@ const InboxIcon = () => <Svg><path d="M2 9.5l1.6-5.2A1 1 0 014.6 3.5h6.8a1 1 0 0
 const PanelIcon = () => <Svg><rect x="2" y="3" width="12" height="10" rx="2" /><path d="M6 3v10" /></Svg>
 const MoveIcon = () => <Svg><path d="M2.5 8h9M9 5l3 3-3 3" /><path d="M13.5 3v10" /></Svg>
 const ListIcon = () => <Svg><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" /></Svg>
+const TrashIcon = () => <Svg><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></Svg>

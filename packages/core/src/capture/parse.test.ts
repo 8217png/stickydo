@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { dueStatus, formatDue, parseCapture } from './parse'
+import { dueStatus, formatDue } from './due'
+import { parseCapture } from './parse'
 
 // 固定“现在”：2026-10-02 周五 10:00
 const NOW = new Date(2026, 9, 2, 10, 0)
@@ -166,7 +167,7 @@ describe('显示', () => {
 })
 
 describe('存储格式与正文', async () => {
-  const { dueFromAttr, dueToAttr } = await import('./parse')
+  const { dueFromAttr, dueToAttr } = await import('./due')
   const { captureToDoc, todoMeta } = await import('./todo')
 
   it('dueToAttr / dueFromAttr 往返', () => {

@@ -5,7 +5,7 @@ import { readingOrder } from './layout'
 import { docFromText } from './doc'
 import { useNotes, visibleNotes } from './store'
 import { nextNotePosition } from './viewport'
-import { openCapture, openPalette, useCommandUI } from '../capture/state'
+import { closePalette, openCapture, openPalette, useCommandUI } from '../capture/state'
 import { toggleBoardLayout, toggleSidebar, useBoardLayout, useView } from '../view'
 
 /** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
@@ -24,8 +24,12 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
       const key = e.key
       // Ctrl/⌘+K：命令面板。在编辑便利贴时也能用；面板自己处理再按一次关闭
       if (mod && !e.shiftKey && !e.altKey && key.toLowerCase() === 'k' && !e.isComposing) {
-        if (useCommandUI.getState().paletteOpen) return
         e.preventDefault()
+        // 面板已经开着（焦点还没进到面板里时，面板自己收不到这次按键）：关闭
+        if (useCommandUI.getState().paletteOpen) {
+          closePalette()
+          return
+        }
         ;(document.activeElement as HTMLElement | null)?.blur?.()
         openPalette()
         return

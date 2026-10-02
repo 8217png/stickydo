@@ -75,3 +75,16 @@ RETURNING *;
 SELECT * FROM boards
 WHERE user_id = $1 AND version > sqlc.arg(since) AND version <= sqlc.arg(upto)
 ORDER BY version;
+
+-- 回收站清理（internal/jobs）：软删除超过保留期的记录彻底删除
+
+-- name: DetachNotesFromPurgedBoards :execrows
+-- 看板硬删除会级联删除其中的便利贴：先把还在用的便利贴移到收件箱（客户端早已按收件箱显示）
+UPDATE notes SET board_id = NULL
+WHERE board_id IN (SELECT b.id FROM boards b WHERE b.deleted_at IS NOT NULL AND b.deleted_at < sqlc.arg(before)::timestamptz);
+
+-- name: PurgeDeletedBoards :execrows
+DELETE FROM boards WHERE deleted_at IS NOT NULL AND deleted_at < sqlc.arg(before)::timestamptz;
+
+-- name: PurgeDeletedNotes :execrows
+DELETE FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < sqlc.arg(before)::timestamptz;

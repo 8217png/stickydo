@@ -29,6 +29,22 @@ func (q *Queries) BoardOwnedBy(ctx context.Context, arg BoardOwnedByParams) (boo
 	return exists, err
 }
 
+const detachNotesFromPurgedBoards = `-- name: DetachNotesFromPurgedBoards :execrows
+
+UPDATE notes SET board_id = NULL
+WHERE board_id IN (SELECT b.id FROM boards b WHERE b.deleted_at IS NOT NULL AND b.deleted_at < $1::timestamptz)
+`
+
+// 回收站清理（internal/jobs）：软删除超过保留期的记录彻底删除
+// 看板硬删除会级联删除其中的便利贴：先把还在用的便利贴移到收件箱（客户端早已按收件箱显示）
+func (q *Queries) DetachNotesFromPurgedBoards(ctx context.Context, before time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, detachNotesFromPurgedBoards, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getBoardForUpdate = `-- name: GetBoardForUpdate :one
 SELECT id, user_id, name, color, sort_order, created_at, updated_at, deleted_at, version, field_versions FROM boards WHERE id = $1 FOR UPDATE
 `
@@ -396,6 +412,30 @@ func (q *Queries) PullNotes(ctx context.Context, arg PullNotesParams) ([]Note, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const purgeDeletedBoards = `-- name: PurgeDeletedBoards :execrows
+DELETE FROM boards WHERE deleted_at IS NOT NULL AND deleted_at < $1::timestamptz
+`
+
+func (q *Queries) PurgeDeletedBoards(ctx context.Context, before time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeDeletedBoards, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgeDeletedNotes = `-- name: PurgeDeletedNotes :execrows
+DELETE FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < $1::timestamptz
+`
+
+func (q *Queries) PurgeDeletedNotes(ctx context.Context, before time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeDeletedNotes, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setSyncSeq = `-- name: SetSyncSeq :exec

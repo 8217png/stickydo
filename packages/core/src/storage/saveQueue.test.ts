@@ -8,7 +8,7 @@ const note = (id: string, text = id): Note => ({
   id, content: docFromText(text), color: 'lemon', x: 0, y: 0, w: 220, h: 200, z: 1,
   version: 0, updatedAt: 1, dirty: true,
 })
-const data = (...notes: Note[]): Persisted => ({ notes, tombstones: [], boards: [], boardTombstones: [], cursor: 0 })
+const data = (...notes: Note[]): Persisted => ({ notes, tombstones: [], boards: [], boardTombstones: [], cursor: 0, trash: [] })
 
 /** 记录每次写入的假存储；failNext 次数内的写入抛错 */
 function fakeRepo() {

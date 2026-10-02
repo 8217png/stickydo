@@ -27,7 +27,7 @@ function installLocalStorage() {
 }
 
 let dbSeq = 0
-const NB = { boards: [], boardTombstones: [] }
+const NB = { boards: [], boardTombstones: [], trash: [] }
 const openRepo = () => IdbNotesRepo.open(`test-${++dbSeq}`)
 
 describe('IdbNotesRepo', () => {

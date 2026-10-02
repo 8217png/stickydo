@@ -5,7 +5,6 @@ import {
   doneTodos,
   dueStatus,
   formatDue,
-  parseCapture,
   PRIORITY_LABEL,
   taggedTodos,
   type TodoGroup,
@@ -17,11 +16,10 @@ import { noteColorVar } from '../../design/colors'
 import { type Note, noteBoardId, noteTitle, useNotes } from '../notes/store'
 import { toggleTaskAt } from '../notes/NoteRenderer'
 import { openNote } from '../boards/actions'
-import { createFromCapture } from '../capture/actions'
-import type { View } from '../view'
+import { MORPH_LIMIT, type View } from '../view'
 import { useNow, useTodos } from './useTodos'
 
-type TodoView = Exclude<View, { kind: 'board' }>
+type TodoView = Exclude<View, { kind: 'board' } | { kind: 'trash' }>
 
 const WEEKDAY = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const fullDate = (d: Date) => `${d.getMonth() + 1}月${d.getDate()}日 ${WEEKDAY[d.getDay()]}`
@@ -105,7 +103,7 @@ export function TodoView({ view }: { view: TodoView }) {
                   {g.todos.map((t) => {
                     const key = keyOf(t)
                     const shownChecked = settling.has(key) ? !t.checked : t.checked
-                    return <TodoRow key={key} todo={t} checked={shownChecked} now={now} onToggle={() => toggle(t)} />
+                    return <TodoRow key={key} todo={t} checked={shownChecked} now={now} onToggle={() => toggle(t)} animateLayout={count <= MORPH_LIMIT} />
                   })}
                 </AnimatePresence>
               </ul>
@@ -174,7 +172,8 @@ function GroupHeading({ group, now }: { group: TodoGroup; now: Date }) {
   )
 }
 
-function TodoRow({ todo, checked, now, onToggle }: { todo: TodoRef; checked: boolean; now: Date; onToggle: () => void }) {
+function TodoRow(props: { todo: TodoRef; checked: boolean; now: Date; onToggle: () => void; animateLayout: boolean }) {
+  const { todo, checked, now, onToggle } = props
   const note = useNotes((s) => s.notes.find((n) => n.id === todo.noteId))
   const boards = useNotes((s) => s.boards)
   const board = useMemo(() => {
@@ -186,7 +185,8 @@ function TodoRow({ todo, checked, now, onToggle }: { todo: TodoRef; checked: boo
 
   return (
     <motion.li
-      layout="position"
+      // 收起一条时其他的平滑上移；条目很多时关掉（每次渲染都要测量位置）
+      layout={props.animateLayout ? 'position' : false}
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
@@ -264,9 +264,14 @@ function noteContext(note: Note, boardName: string | undefined, text: string) {
 /** 列表顶部的输入框：在“今天”里记的没写时间就算今天，在标签里记的自动带上这个标签 */
 function AddTodo({ view }: { view: TodoView }) {
   const [text, setText] = useState('')
-  const submit = () => {
+  const submit = async () => {
     const body = text.trim().replace(/^(?:-\s*)?\[\s?\]\s*/, '')
     if (!body) return
+    // 解析器（chrono-node）按需加载
+    const [{ parseCapture }, { createFromCapture }] = await Promise.all([
+      import('@stickydo/core/capture/parse'),
+      import('../capture/actions'),
+    ])
     let input = `[] ${body}`
     const c = parseCapture(input)
     if (view.kind === 'today' && !c.due) input += ' 今天'
@@ -285,7 +290,7 @@ function AddTodo({ view }: { view: TodoView }) {
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
-          if (e.key === 'Enter') submit()
+          if (e.key === 'Enter') void submit()
           if (e.key === 'Escape') {
             e.stopPropagation()
             setText('')

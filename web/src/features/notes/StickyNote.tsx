@@ -1,25 +1,92 @@
-import { memo, useEffect, useRef, useState } from 'react'
-import { motion } from 'motion/react'
+import { Component, lazy, memo, type ReactNode, Suspense, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { AnimatePresence, motion } from 'motion/react'
 import { Rnd } from 'react-rnd'
-import { EditorContent, useEditor } from '@tiptap/react'
 import { NOTE_COLORS, noteColorVar } from '../../design/colors'
 import { useSettings } from '../settings'
-import { type Note, noteTilt, type Snapshot, snapshotNow, sortedBoards, useNotes } from './store'
+import { type Note, noteTilt, type Snapshot, sortedBoards, useNotes } from './store'
 import { deleteWithUndo } from './actions'
 import { boardOfNote, moveNoteWithUndo } from '../boards/actions'
 import { cleanDoc, docIsEmpty, type NoteDoc, trimDoc } from './doc'
-import { noteExtensions } from './extensions'
 import { NoteRenderer, toggleTaskAt } from './NoteRenderer'
+
+/** 编辑器（Tiptap）单独打包，第一次编辑前加载；加载完之前显示原来的内容，看不出切换 */
+export const loadNoteEditor = () => import('./NoteEditor')
+const NoteEditorLazy = lazy(loadNoteEditor)
+
+/**
+ * 编辑器（第一次编辑时才加载）。加载出来、并且真正拿到焦点之前，盖一层原来的内容和一个看不见的
+ * 输入框先接住打的字；编辑器拿到焦点时取走这些字接着写进去，再撤掉这一层。
+ * 焦点交接中间没有空档，双击后马上打字不会丢字。
+ */
+function NoteEditor(props: { note: Note; onDone: (content: NoteDoc, snapshot: Snapshot) => void; fit?: boolean }) {
+  const [ready, setReady] = useState(false)
+  const typed = useRef<HTMLTextAreaElement>(null)
+  const takeOver = () => {
+    const text = typed.current?.value ?? ''
+    setReady(true)
+    return text
+  }
+  return (
+    <div className={`relative ${props.fit ? '' : 'h-full'}`} style={{ backgroundColor: 'inherit', borderRadius: 'inherit' }}>
+      <EditorBoundary note={props.note}>
+        <Suspense fallback={null}>
+          <NoteEditorLazy {...props} takeOver={takeOver} />
+        </Suspense>
+      </EditorBoundary>
+      {!ready && (
+        <div className="absolute inset-0 z-[1] overflow-hidden" style={{ backgroundColor: 'inherit', borderRadius: 'inherit' }}>
+          <NoteContent note={props.note} fit={props.fit} />
+          <textarea
+            ref={typed}
+            autoFocus
+            aria-label="正在打开编辑器"
+            className="no-drag absolute inset-0 resize-none opacity-0"
+            onPointerDown={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 编辑器出错（或加载失败，例如离线时第一次编辑）：退出编辑、保留原内容，不影响整个页面 */
+class EditorBoundary extends Component<{ note: Note; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch(err: unknown) {
+    console.error('[editor] 编辑器出错', err)
+    toast.error('编辑器没能打开，请稍后再试')
+    if (useNotes.getState().editingId === this.props.note.id) useNotes.getState().setEditing(null)
+  }
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 32, mass: 0.8 } as const
 
 interface Props {
   note: Note
-  selected: boolean
-  editing: boolean
+  /** 白板 / 列表切换时的共享元素过渡（layoutId）；便利贴多时关掉，见 MORPH_LIMIT */
+  morph?: boolean
+  /** 列表视图：增删时其他便利贴平滑让位（便利贴多时关掉，见 MORPH_LIMIT） */
+  animateLayout?: boolean
 }
 
-export const StickyNote = memo(function StickyNote({ note, selected, editing }: Props) {
+/**
+ * 选中、编辑状态由每张便利贴自己订阅：换选中时只有这两张重新渲染，白板不用整体重渲染
+ * （整体重渲染会让 AnimatePresence 给所有便利贴传一遍上下文，便利贴一多就卡）
+ */
+const useNoteState = (id: string) => ({
+  selected: useNotes((s) => s.selectedId === id),
+  editing: useNotes((s) => s.editingId === id),
+})
+
+export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
+  const { selected, editing } = useNoteState(note.id)
   const tiltOn = useSettings((s) => s.tilt)
   const { update, bringToFront, select, setEditing } = useNotes.getState()
   const [lifted, setLifted] = useState(false)
@@ -48,6 +115,9 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
       minWidth={140}
       minHeight={100}
       disableDragging={editing}
+      // 不在拖动时给 body 加类名来禁止选中文字：便利贴自己已经禁止选中，
+      // 而改 body 的类名会让整页重新计算样式，便利贴一多每次点击都会卡一下
+      enableUserSelectHack={false}
       cancel=".no-drag"
       enableResizing={{ right: true, bottom: true, bottomRight: true }}
       resizeHandleComponent={{ bottomRight: <ResizeGrip /> }}
@@ -100,7 +170,7 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
       <NoteToolbar note={note} visible={(selected || hovered) && !lifted} />
 
       <motion.div
-        layoutId={`paper-${note.id}`}
+        layoutId={morph ? `paper-${note.id}` : undefined}
         className="note-paper h-full w-full"
         data-lifted={lifted}
         style={{
@@ -127,7 +197,8 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
  * 列表视图里的一张便利贴（docs/frontend-design.md §2.8）：占满一行，高度随内容，不裁切。
  * 和白板上的同一张共用 layoutId，切换视图时从原来的位置平滑移过去。
  */
-export const ListNote = memo(function ListNote({ note, selected, editing }: Props) {
+export const ListNote = memo(function ListNote({ note, morph, animateLayout }: Props) {
+  const { selected, editing } = useNoteState(note.id)
   const [hovered, setHovered] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -136,7 +207,7 @@ export const ListNote = memo(function ListNote({ note, selected, editing }: Prop
   return (
     <motion.div
       ref={ref}
-      layout="position"
+      layout={animateLayout ? 'position' : false}
       className="relative"
       // 选中或悬停时盖住下一张，操作栏的菜单不会被挡住
       style={{ zIndex: selected || hovered || editing ? 2 : undefined }}
@@ -151,7 +222,7 @@ export const ListNote = memo(function ListNote({ note, selected, editing }: Prop
     >
       <NoteToolbar note={note} visible={selected || hovered} />
       <motion.div
-        layoutId={`paper-${note.id}`}
+        layoutId={morph ? `paper-${note.id}` : undefined}
         className="note-paper w-full"
         style={{
           backgroundColor: noteColorVar(note.color),
@@ -201,59 +272,20 @@ function NoteContent({ note, fit }: { note: Note; fit?: boolean }) {
   )
 }
 
-/**
- * 原地编辑：Tiptap 所见即所得编辑器。Markdown 写法会即时变成格式（# 标题、- 列表、[] 待办、**粗体** 等）。
- * Esc 或 Ctrl/⌘+Enter 结束编辑；点到别处也会结束。
- */
-function NoteEditor({ note, onDone, fit }: { note: Note; onDone: (content: NoteDoc, snapshot: Snapshot) => void; fit?: boolean }) {
-  // 进入编辑时的快照：编辑结束、内容确实变了才作为一步撤销记录
-  const snapshot = useRef(snapshotNow())
-  const done = useRef(false)
-  const finish = (doc: NoteDoc) => {
-    if (done.current) return
-    done.current = true
-    onDone(doc, snapshot.current)
-  }
-
-  const editor = useEditor({
-    extensions: noteExtensions({ placeholder: '写点什么…' }),
-    content: note.content,
-    autofocus: 'end',
-    editorProps: {
-      attributes: { class: 'note-md note-editor outline-none', spellcheck: 'false' },
-      handleKeyDown: (view, e) => {
-        if (e.isComposing) return false
-        if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
-          e.preventDefault()
-          ;(view.dom as HTMLElement).blur()
-          return true
-        }
-        return false
-      },
-    },
-    // 去掉编辑器补上的默认属性和末尾空段落，内容没改时与原来完全一致
-    onBlur: ({ editor }) => finish(cleanDoc(trimDoc(editor.getJSON() as NoteDoc))),
-  })
-
-  return (
-    <EditorContent
-      editor={editor}
-      className={`no-drag note-text cursor-text px-4 pt-4 pb-3 ${fit ? 'min-h-[72px]' : 'h-full overflow-y-auto'}`}
-      onPointerDown={(e) => e.stopPropagation()}
-    />
-  )
+/** 操作栏只在显示时挂载：每张便利贴都常驻一个毛玻璃操作栏，便利贴一多绘制很慢 */
+function NoteToolbar({ note, visible }: { note: Note; visible: boolean }) {
+  return <AnimatePresence>{visible && <NoteToolbarInner key="toolbar" note={note} />}</AnimatePresence>
 }
 
-function NoteToolbar({ note, visible }: { note: Note; visible: boolean }) {
+function NoteToolbarInner({ note }: { note: Note }) {
   const update = useNotes((s) => s.update)
   return (
-    <div
-      className="no-drag absolute -top-11 left-0 flex items-center gap-1 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md transition-all duration-150"
-      style={{
-        opacity: visible ? 1 : 0,
-        transform: `translateY(${visible ? 0 : 4}px)`,
-        pointerEvents: visible ? 'auto' : 'none',
-      }}
+    <motion.div
+      className="no-drag absolute -top-11 left-0 flex items-center gap-1 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md"
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      transition={{ duration: 0.15 }}
       onPointerDown={(e) => {
         // 不触发拖拽，但点操作栏也算选中这张便利贴，后续快捷键作用于它
         e.stopPropagation()
@@ -292,7 +324,7 @@ function NoteToolbar({ note, visible }: { note: Note; visible: boolean }) {
           <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" />
         </svg>
       </button>
-    </div>
+    </motion.div>
   )
 }
 

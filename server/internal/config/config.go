@@ -23,6 +23,8 @@ type Config struct {
 	AutoMigrate bool `envconfig:"AUTO_MIGRATE" default:"true"`
 	// 部署在反向代理后面时打开，才会信任 X-Forwarded-For 获取客户端 IP（用于限流）
 	TrustProxy bool `envconfig:"TRUST_PROXY" default:"false"`
+	// 回收站保留期：软删除超过这么久的便利贴和看板彻底删除；0 表示不清理
+	TrashRetention time.Duration `envconfig:"TRASH_RETENTION" default:"720h"`
 	// 日志：text 或 json
 	LogFormat string `envconfig:"LOG_FORMAT" default:"text"`
 	LogLevel  string `envconfig:"LOG_LEVEL" default:"info"`

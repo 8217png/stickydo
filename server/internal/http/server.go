@@ -18,6 +18,7 @@ import (
 
 	"github.com/8217png/stickydo/server/internal/apperr"
 	"github.com/8217png/stickydo/server/internal/http/api"
+	"github.com/8217png/stickydo/server/internal/realtime"
 	"github.com/8217png/stickydo/server/internal/service"
 )
 
@@ -27,6 +28,8 @@ type Deps struct {
 	Pool        *pgxpool.Pool
 	Auth        *service.Auth
 	Sync        *service.Sync
+	// 实时通知（WebSocket）；为空时不提供 /sync/ws
+	Hub         *realtime.Hub
 	Log         *slog.Logger
 	CORSOrigins []string
 	TrustProxy  bool
@@ -90,12 +93,17 @@ func New(d Deps) (http.Handler, error) {
 		},
 	})
 
-	strict := api.NewStrictHandlerWithOptions(&handlers{pool: d.Pool, auth: d.Auth, sync: d.Sync}, nil, api.StrictHTTPServerOptions{
+	strict := api.NewStrictHandlerWithOptions(&handlers{pool: d.Pool, auth: d.Auth, sync: d.Sync, hub: d.Hub}, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			problem(w, r, apperr.New(http.StatusBadRequest, apperr.BadRequest, "请求格式不正确"))
 		},
 		ResponseErrorHandlerFunc: problem,
 	})
+
+	// WebSocket 不在 OpenAPI 里（无法描述），认证在连接建立后的第一条消息里完成
+	if d.Hub != nil {
+		r.Get(apiPrefix+"/sync/ws", d.Hub.ServeHTTP)
+	}
 
 	r.Route(apiPrefix, func(ar chi.Router) {
 		ar.Use(onlyPaths(limited, apiPrefix+"/auth/register", apiPrefix+"/auth/login", apiPrefix+"/auth/refresh"))

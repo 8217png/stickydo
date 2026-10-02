@@ -31,6 +31,7 @@ const session = createSession({
 
 export const useSession = bindStore(session.store)
 export const refreshAccessToken = session.refreshAccessToken
+export const accessToken = session.accessToken
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {

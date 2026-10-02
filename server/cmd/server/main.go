@@ -15,6 +15,8 @@ import (
 	"github.com/8217png/stickydo/server/internal/auth"
 	"github.com/8217png/stickydo/server/internal/config"
 	"github.com/8217png/stickydo/server/internal/db"
+	"github.com/8217png/stickydo/server/internal/jobs"
+	"github.com/8217png/stickydo/server/internal/realtime"
 	httpserver "github.com/8217png/stickydo/server/internal/http"
 	"github.com/8217png/stickydo/server/internal/service"
 )
@@ -50,11 +52,24 @@ func run() error {
 	}
 
 	authSvc := service.NewAuth(pool, auth.NewTokens(cfg.JWTSecret, cfg.AccessTTL), cfg.RefreshTTL, log)
+	syncSvc := service.NewSync(pool)
+	hub := realtime.NewHub(realtime.Options{
+		Authenticate:   authSvc.Authenticate,
+		Version:        syncSvc.Version,
+		DeviceActive:   authSvc.DeviceActive,
+		OriginPatterns: realtime.HostPatterns(cfg.CORSOrigins),
+		Log:            log,
+	})
+	authSvc.Sessions = hub
 	handler, err := httpserver.New(httpserver.Deps{
-		Pool: pool, Auth: authSvc, Sync: service.NewSync(pool), Log: log, CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
+		Pool: pool, Auth: authSvc, Sync: syncSvc, Hub: hub, Log: log, CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
 	})
 	if err != nil {
 		return err
+	}
+
+	if cfg.TrashRetention > 0 {
+		go jobs.RunTrashPurge(ctx, pool, cfg.TrashRetention, 6*time.Hour, log)
 	}
 
 	srv := &http.Server{

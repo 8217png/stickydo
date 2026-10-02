@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { MotionConfig } from 'motion/react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Toaster } from 'sonner'
 import { useSettings } from './features/settings'
 import { surface } from './extension/surface'
 import { BoardPage } from './routes/BoardPage'
-import { LoginPage, RegisterPage } from './routes/AuthPages'
-import { AccountPage } from './routes/AccountPage'
+import { LoadBoundary } from './components/LoadBoundary'
+
+// 登录、注册、账号页不在首屏，按需加载
+const LoginPage = lazy(() => import('./routes/AuthPages').then((m) => ({ default: m.LoginPage })))
+const RegisterPage = lazy(() => import('./routes/AuthPages').then((m) => ({ default: m.RegisterPage })))
+const AccountPage = lazy(() => import('./routes/AccountPage').then((m) => ({ default: m.AccountPage })))
 
 // 嵌入时宿主页面在根元素上设置的主题（我们自己的显式选择不算）
 const initialTheme =
@@ -40,13 +44,17 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       {surface === 'web' ? (
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/account" element={<AccountPage />} />
-            {/* 其余路径都显示白板（例如部署在子路径下时） */}
-            <Route path="*" element={<BoardPage />} />
-          </Routes>
+          <LoadBoundary>
+            <Suspense fallback={null}>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/account" element={<AccountPage />} />
+                {/* 其余路径都显示白板（例如部署在子路径下时） */}
+                <Route path="*" element={<BoardPage />} />
+              </Routes>
+            </Suspense>
+          </LoadBoundary>
         </BrowserRouter>
       ) : (
         // Chrome 插件：单机使用，没有账号入口

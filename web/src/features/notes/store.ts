@@ -5,7 +5,7 @@ import { load, save } from '../../lib/storage'
 import { type NoteSizeKey, useSettings } from '../settings'
 import { currentPopupSize } from '../../extension/popupSize'
 import { surface } from '../../extension/surface'
-import { createSaveQueue, emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/storage'
+import { createSaveQueue, emptyPersisted, type NotesRepo, type Persisted, TRASH_RETENTION_MS, type TrashItem } from '@stickydo/core/storage'
 import {
   type Board,
   commitBoards,
@@ -21,7 +21,7 @@ import {
 import type { NoteColor } from '@stickydo/core/design'
 import { activeBoardId } from '../view'
 import { migrateFromLocalStorage, openNotesRepo } from '../../storage/notesRepo'
-import { docTitle, emptyDoc, isNoteDoc, markdownToDoc } from './doc'
+import { docFromText, docIsEmpty, docTitle, emptyDoc, isNoteDoc, loadMarkdown, type NoteDoc } from './doc'
 import { gridLayout } from './layout'
 
 export type { Board, Note, Snapshot }
@@ -48,8 +48,12 @@ export function noteTilt(id: string): number {
   return Math.round((((h >>> 0) % 1000) / 1000) * 30 - 15) / 10
 }
 
-function sampleNotes(): Note[] {
+/** 把 Markdown 文本转成正文（按需加载，见 doc.ts 的 loadMarkdown） */
+type MarkdownConverter = (md: string) => NoteDoc
+
+async function sampleNotes(): Promise<Note[]> {
   const now = Date.now()
+  const markdownToDoc = await loadMarkdown()
   const notes: Note[] = baseSampleNotes().map((n) => ({
     ...n,
     content: markdownToDoc(n.content),
@@ -118,11 +122,18 @@ export const LOCAL_OWNER = 'local'
 const LEGACY_KEY = 'stickydo.m0.notes'
 const SEEDED_KEY = 'stickydo.seeded'
 
+/** 有没有 M0/M1 的 Markdown 文本正文（需要先加载转换器） */
+const hasMarkdownContent = (raw: unknown[]) => raw.some((n) => typeof (n as { content?: unknown } | null)?.content === 'string')
+
 /** 兼容旧数据：M0/M1 的正文是 Markdown 文本，倾斜角度和创建时间存在便利贴上 */
-function normalizeNote(input: unknown): Note | null {
+function normalizeNote(input: unknown, markdownToDoc?: MarkdownConverter): Note | null {
   const raw = input as Record<string, unknown> | null
   if (!raw || typeof raw.id !== 'string') return null
-  const content = isNoteDoc(raw.content) ? raw.content : typeof raw.content === 'string' ? markdownToDoc(raw.content) : emptyDoc()
+  const content = isNoteDoc(raw.content)
+    ? raw.content
+    : typeof raw.content === 'string'
+      ? (markdownToDoc ?? docFromText)(raw.content)
+      : emptyDoc()
   const legacy = typeof raw.version !== 'number'
   return {
     id: raw.id,
@@ -150,16 +161,36 @@ let repoPromise: Promise<NotesRepo> | null = null
 function getRepo(): Promise<NotesRepo> {
   repoPromise ??= (async () => {
     const repo = await openNotesRepo()
-    await migrateFromLocalStorage(repo, normalizeNote)
+    // localStorage 里还有 M2 及之前的数据时才加载 Markdown 转换器
+    const md = hasLegacyLocalStorage() ? await loadMarkdown() : undefined
+    await migrateFromLocalStorage(repo, (n) => normalizeNote(n, md))
     return repo
   })()
   return repoPromise
 }
 
+function hasLegacyLocalStorage() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k === LEGACY_KEY || k?.startsWith('stickydo.notes.v2:')) return true
+    }
+  } catch {
+    /* ignore */
+  }
+  return false
+}
+
+/** 把一组原始数据转成便利贴；有旧版 Markdown 正文时先加载转换器 */
+async function normalizeAll(raw: unknown[]): Promise<Note[]> {
+  const md = hasMarkdownContent(raw) ? await loadMarkdown() : undefined
+  return raw.map((n) => normalizeNote(n, md)).filter((n): n is Note => !!n)
+}
+
 async function readPersisted(owner: string): Promise<Persisted | null> {
   const p = await (await getRepo()).load(owner)
   if (!p) return null
-  return { ...p, notes: p.notes.map(normalizeNote).filter((n): n is Note => !!n) }
+  return { ...p, notes: await normalizeAll(p.notes) }
 }
 
 /** 读取某个归属的数据；本机数据第一次读取时迁移最早的旧数据，或者放几张示例便利贴 */
@@ -170,9 +201,9 @@ async function loadOwner(owner: string): Promise<{ data: Persisted; saved: Persi
   // “已放过示例”的标记和删除旧 key，都要等数据真正写入存储之后（见 persistNow），
   // 否则刚打开就关掉页面，下次既没有示例也没有数据
   const legacy = load<unknown[]>(LEGACY_KEY)
-  if (legacy) return { data: { ...emptyPersisted(), notes: legacy.map(normalizeNote).filter((n): n is Note => !!n) }, saved: null }
+  if (legacy) return { data: { ...emptyPersisted(), notes: await normalizeAll(legacy) }, saved: null }
   if (load<boolean>(SEEDED_KEY)) return { data: emptyPersisted(), saved: null }
-  return { data: { ...emptyPersisted(), notes: sampleNotes() }, saved: null }
+  return { data: { ...emptyPersisted(), notes: await sampleNotes() }, saved: null }
 }
 
 // ---------- 状态 ----------
@@ -214,6 +245,13 @@ interface NotesState extends Persisted {
   moveToBoard: (id: string, boardId: string | null) => void
   /** 把看板移到排序后的第 toIndex 位（拖动排序、上移 / 下移） */
   moveBoard: (id: string, toIndex: number) => void
+
+  /** 从回收站恢复，返回恢复到的看板（原看板不在了就是收件箱） */
+  restoreFromTrash: (id: string) => string | null | undefined
+  /** 从回收站彻底删除（只影响本机的回收站） */
+  deleteForever: (ids: string[]) => TrashItem[]
+  /** 把彻底删除的放回回收站（提示条上的撤销） */
+  putBackToTrash: (items: TrashItem[]) => void
 }
 
 const maxZ = (notes: Note[]) => notes.reduce((m, n) => Math.max(m, n.z), 0)
@@ -236,6 +274,7 @@ export const useNotes = create<NotesState>()((set, get) => {
       return {
         ...(n.notes && n.notes !== s.notes ? commitLocal(s, n.notes, now) : {}),
         ...(n.boards && n.boards !== s.boards ? commitBoards(s, n.boards, now) : {}),
+        trash: n.notes ? updateTrash(s, n.notes, now) : s.trash,
         ...extra,
       }
     })
@@ -410,6 +449,36 @@ export const useNotes = create<NotesState>()((set, get) => {
       edit({ boards: s.boards.map(withKeys(sortKeysFor(next, to))) })
     },
 
+    restoreFromTrash: (id) => {
+      const s = get()
+      const item = s.trash.find((t) => t.id === id)
+      if (!item) return undefined
+      if (s.notes.some((n) => n.id === id)) {
+        set({ trash: s.trash.filter((t) => t.id !== id) })
+        return undefined
+      }
+      const boardId = item.note.boardId && s.boards.some((b) => b.id === item.note.boardId) ? item.note.boardId : null
+      s.checkpoint()
+      // 放回原来的位置，放在最上层；回收站里的这一条由 updateTrash 去掉
+      edit([...s.notes, { ...item.note, boardId, z: maxZ(s.notes) + 1 }])
+      return boardId
+    },
+
+    deleteForever: (ids) => {
+      const s = get()
+      const set_ = new Set(ids)
+      const removed = s.trash.filter((t) => set_.has(t.id))
+      if (removed.length) set({ trash: s.trash.filter((t) => !set_.has(t.id)) })
+      return removed
+    },
+
+    putBackToTrash: (items) => {
+      const s = get()
+      const have = new Set([...s.trash.map((t) => t.id), ...s.notes.map((n) => n.id)])
+      const back = items.filter((t) => !have.has(t.id))
+      if (back.length) set({ trash: [...s.trash, ...back] })
+    },
+
     moveToBoard: (id, boardId) => {
       const s = get()
       const note = s.notes.find((n) => n.id === id)
@@ -422,6 +491,35 @@ export const useNotes = create<NotesState>()((set, get) => {
     },
   }
 })
+
+/**
+ * 回收站跟着便利贴的变化走（docs/frontend-design.md §2.9）：消失的便利贴进回收站，
+ * 回来的（撤销、恢复、别的设备又改了）从回收站去掉。空白的和没动过的示例不进回收站。
+ */
+function updateTrash(s: Pick<NotesState, 'notes' | 'boards' | 'trash'>, next: Note[], now: number): TrashItem[] {
+  if (next === s.notes) return s.trash
+  const nextIds = new Set(next.map((n) => n.id))
+  const removed = s.notes.filter((n) => !nextIds.has(n.id) && !n.sample && !docIsEmpty(n.content))
+  const back = s.trash.some((t) => nextIds.has(t.id))
+  if (!removed.length && !back) return s.trash
+  const removedIds = new Set(removed.map((n) => n.id))
+  const names = new Map(s.boards.map((b) => [b.id, b.name]))
+  return [
+    ...s.trash.filter((t) => !nextIds.has(t.id) && !removedIds.has(t.id)),
+    ...removed.map((note) => ({
+      id: note.id,
+      note,
+      deletedAt: now,
+      ...(note.boardId && names.has(note.boardId) ? { boardName: names.get(note.boardId) } : {}),
+    })),
+  ]
+}
+
+/** 去掉超过保留期的 */
+const purgeTrash = (trash: TrashItem[], now = Date.now()) => {
+  const kept = trash.filter((t) => now - t.deletedAt < TRASH_RETENTION_MS)
+  return kept.length === trash.length ? trash : kept
+}
 
 /** 看板排序：新看板排在最后（排序键见 @stickydo/core/sync 的 keyBetween） */
 function nextSortOrder(boards: Board[]): string {
@@ -493,6 +591,8 @@ export function applySyncResult(owner: string, update: (d: SyncData) => SyncData
       tombstones: next.tombstones,
       boards: next.boards,
       boardTombstones: next.boardTombstones,
+      // 在别的设备上删除的便利贴也进回收站
+      trash: updateTrash(s, next.notes, Date.now()),
       // 撤销栈跟上服务端，撤销只撤回自己的操作
       ...(remote && (remote.notes.length || remote.boards.length)
         ? { past: s.past.map((p) => patchStep(p, remote)), future: s.future.map((f) => patchStep(f, remote)) }
@@ -518,6 +618,7 @@ const snapshotOf = (s: Persisted): Persisted => ({
   boards: s.boards,
   boardTombstones: s.boardTombstones,
   cursor: s.cursor,
+  trash: s.trash,
 })
 
 const SAVE_FAILED_TOAST = 'storage-save-failed'
@@ -575,7 +676,7 @@ export function hydrateNotes(): Promise<void> {
     const owner = useNotes.getState().owner
     const { data, saved } = await loadOwner(owner)
     saves.markStored(owner, saved)
-    useNotes.setState({ ...data, hydrated: true })
+    useNotes.setState({ ...data, trash: purgeTrash(data.trash ?? []), hydrated: true })
   })()
   return hydrating
 }
@@ -608,9 +709,12 @@ export async function switchOwner(owner: string, opts: { mergeLocal?: boolean } 
     for (const b of local.boards) {
       if (!existingBoards.has(b.id)) next.boards.push({ ...b, version: 0, dirty: true, updatedAt: Math.max(b.updatedAt, now) })
     }
-    if (local.notes.length || local.boards.length) persistNow(LOCAL_OWNER, emptyPersisted())
+    // 本机回收站里的也一起带过去
+    const inTrash = new Set(next.trash.map((t) => t.id))
+    next.trash = [...next.trash, ...(local.trash ?? []).filter((t) => !inTrash.has(t.id))]
+    if (local.notes.length || local.boards.length || local.trash?.length) persistNow(LOCAL_OWNER, emptyPersisted())
   }
-  useNotes.setState({ ...next, owner, hydrated: true, past: [], future: [], selectedId: null, editingId: null })
+  useNotes.setState({ ...next, trash: purgeTrash(next.trash ?? []), owner, hydrated: true, past: [], future: [], selectedId: null, editingId: null })
 }
 
 // ---------- 多个页面同时打开（多个标签页、插件浮窗和独立窗口） ----------
