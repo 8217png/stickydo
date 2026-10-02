@@ -2,7 +2,7 @@ import { toast } from 'sonner'
 import { captureToDoc } from '@stickydo/core/capture'
 import { parseCapture } from '@stickydo/core/capture/parse'
 import { useNotes } from '../notes/store'
-import { nextNotePosition } from '../notes/viewport'
+import { nextNotePosition, scrollNoteIntoView } from '../notes/viewport'
 
 /**
  * 按快速记录的规则创建便利贴：普通文字是便利贴，[] 开头是一条待办（带时间、优先级、标签）。
@@ -28,6 +28,6 @@ export function createFromCapture(text: string, opts: { reveal?: boolean } = {})
 export function revealNote(id: string) {
   useNotes.getState().select(id)
   requestAnimationFrame(() => {
-    document.querySelector(`[data-note="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+    scrollNoteIntoView(id)
   })
 }

@@ -1,4 +1,5 @@
-import { currentNoteSize, visibleNotes } from './store'
+import { GRID } from './layout'
+import { currentNoteSize, useNotes, visibleNotes } from './store'
 
 export interface Viewport {
   left: number
@@ -38,9 +39,10 @@ export function nextNotePosition(opts: { preferCenter?: boolean } = {}) {
   }
   const pointer = opts.preferCenter ? null : v.pointer
   const center = pointer ?? { x: v.left + v.width / 2, y: v.top + v.height / 2 }
+  // 白板没有边界，坐标可以是负数
   return {
-    x: Math.max(8, Math.round(center.x - size.w / 2) + (pointer ? 0 : jitter())),
-    y: Math.max(8, Math.round(center.y - size.h / 2) + (pointer ? 0 : jitter())),
+    x: Math.round(center.x - size.w / 2) + (pointer ? 0 : jitter()),
+    y: Math.round(center.y - size.h / 2) + (pointer ? 0 : jitter()),
   }
 }
 
@@ -60,7 +62,7 @@ function freeSlot(v: Viewport, size: { w: number; h: number }) {
     for (let j = -reach.y; j <= reach.y; j++) {
       const x = Math.round(cx + i * step.x)
       const y = Math.round(cy + j * step.y)
-      if (x < Math.max(8, v.left) || y < Math.max(8, v.top)) continue
+      if (x < v.left + 8 || y < v.top + 8) continue
       if (x + size.w > v.left + v.width || y + size.h > v.top + v.height) continue
       candidates.push({ x, y, d: (x - cx) ** 2 + (y - cy) ** 2 })
     }
@@ -68,4 +70,26 @@ function freeSlot(v: Viewport, size: { w: number; h: number }) {
   candidates.sort((a, b) => a.d - b.d)
   const hit = candidates.find((c) => free(c.x, c.y))
   return hit && { x: hit.x, y: hit.y }
+}
+
+/**
+ * 把便利贴移进可见范围（键盘切换焦点、从搜索 / 待办跳过去、快速记录之后）。
+ * 白板上平移画布，移动最少的距离；列表视图里滚动列表。
+ */
+export function scrollNoteIntoView(id: string) {
+  const v = boardViewport()
+  const n = useNotes.getState().notes.find((x) => x.id === id)
+  if (!v || !n) {
+    document.querySelector(`[data-note="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+    return
+  }
+  // 留出顶栏、便利贴上方的操作栏和四周的空白
+  const nearest = (start: number, size: number, viewStart: number, viewSize: number, before: number, after: number) => {
+    if (start - before < viewStart || size + before + after > viewSize) return start - before
+    if (start + size + after > viewStart + viewSize) return start + size + after - viewSize
+    return viewStart
+  }
+  const left = nearest(n.x, n.w, v.left, v.width, GRID.side, GRID.side)
+  const top = nearest(n.y, n.h, v.top, v.height, GRID.top, GRID.bottom)
+  if (left !== v.left || top !== v.top) v.scrollTo(left, top)
 }
