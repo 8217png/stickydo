@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { Note, Tombstone } from '@stickydo/core/sync'
+import type { Board, Note, Tombstone } from '@stickydo/core/sync'
 import { emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/storage'
 
 /**
@@ -12,6 +12,7 @@ import { emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/s
 
 type NoteRow = Note & { owner: string }
 type TombRow = Tombstone & { owner: string }
+type BoardRow = Board & { owner: string }
 interface MetaRow {
   owner: string
   cursor: number
@@ -21,6 +22,8 @@ class StickyDoDB extends Dexie {
   notes!: Table<NoteRow, [string, string]>
   tombstones!: Table<TombRow, [string, string]>
   meta!: Table<MetaRow, string>
+  boards!: Table<BoardRow, [string, string]>
+  boardTombstones!: Table<TombRow, [string, string]>
 
   constructor(name: string) {
     super(name)
@@ -30,6 +33,11 @@ class StickyDoDB extends Dexie {
       tombstones: '[owner+id], owner',
       // meta 行的存在表示“这个归属保存过数据”（即使一张便利贴都没有）
       meta: 'owner',
+    })
+    // M4：看板
+    this.version(2).stores({
+      boards: '[owner+id], owner',
+      boardTombstones: '[owner+id], owner',
     })
   }
 }
@@ -56,27 +64,40 @@ export class IdbNotesRepo implements NotesRepo {
   }
 
   async load(owner: string): Promise<Persisted | null> {
-    return this.db.transaction('r', this.db.notes, this.db.tombstones, this.db.meta, async () => {
-      const meta = await this.db.meta.get(owner)
+    const { notes, tombstones, boards, boardTombstones, meta: metaTable } = this.db
+    return this.db.transaction('r', [notes, tombstones, boards, boardTombstones, metaTable], async () => {
+      const meta = await metaTable.get(owner)
       if (!meta) return null
-      const [notes, tombstones] = await Promise.all([
-        this.db.notes.where('owner').equals(owner).toArray(),
-        this.db.tombstones.where('owner').equals(owner).toArray(),
+      const rows = await Promise.all([
+        notes.where('owner').equals(owner).toArray(),
+        tombstones.where('owner').equals(owner).toArray(),
+        boards.where('owner').equals(owner).toArray(),
+        boardTombstones.where('owner').equals(owner).toArray(),
       ])
-      return { notes: notes.map(strip), tombstones: tombstones.map(strip), cursor: meta.cursor }
+      return {
+        notes: rows[0].map(strip),
+        tombstones: rows[1].map(strip),
+        boards: rows[2].map(strip),
+        boardTombstones: rows[3].map(strip),
+        cursor: meta.cursor,
+      }
     })
   }
 
   async save(owner: string, prev: Persisted | null, next: Persisted): Promise<void> {
     const p = prev ?? emptyPersisted()
-    const notes = diff(p.notes, next.notes)
-    const tombs = diff(p.tombstones, next.tombstones)
-    await this.db.transaction('rw', this.db.notes, this.db.tombstones, this.db.meta, async () => {
-      if (notes.put.length) await this.db.notes.bulkPut(notes.put.map((n) => ({ ...n, owner })))
-      if (notes.del.length) await this.db.notes.bulkDelete(notes.del.map((id) => [owner, id] as [string, string]))
-      if (tombs.put.length) await this.db.tombstones.bulkPut(tombs.put.map((t) => ({ ...t, owner })))
-      if (tombs.del.length) await this.db.tombstones.bulkDelete(tombs.del.map((id) => [owner, id] as [string, string]))
-      if (!prev || prev.cursor !== next.cursor) await this.db.meta.put({ owner, cursor: next.cursor })
+    const { notes, tombstones, boards, boardTombstones, meta } = this.db
+    const write = async <T extends { id: string }>(table: Table<T & { owner: string }, [string, string]>, before: T[], after: T[]) => {
+      const d = diff(before, after)
+      if (d.put.length) await table.bulkPut(d.put.map((x) => ({ ...x, owner })))
+      if (d.del.length) await table.bulkDelete(d.del.map((id) => [owner, id] as [string, string]))
+    }
+    await this.db.transaction('rw', [notes, tombstones, boards, boardTombstones, meta], async () => {
+      await write(notes, p.notes, next.notes)
+      await write(tombstones, p.tombstones, next.tombstones)
+      await write(boards, p.boards, next.boards)
+      await write(boardTombstones, p.boardTombstones, next.boardTombstones)
+      if (!prev || prev.cursor !== next.cursor) await meta.put({ owner, cursor: next.cursor })
     })
   }
 }
@@ -93,7 +114,7 @@ export class LocalStorageNotesRepo implements NotesRepo {
       const raw = localStorage.getItem(lsKey(owner))
       if (!raw) return null
       const p = JSON.parse(raw) as Partial<Persisted>
-      return { notes: p.notes ?? [], tombstones: p.tombstones ?? [], cursor: p.cursor ?? 0 }
+      return { ...emptyPersisted(), ...p }
     } catch {
       return null
     }
@@ -124,6 +145,7 @@ export async function migrateFromLocalStorage(repo: NotesRepo, normalize: (raw: 
       const raw = JSON.parse(localStorage.getItem(key) ?? 'null') as Partial<Persisted> | null
       if (raw && !(await repo.load(owner))) {
         await repo.save(owner, null, {
+          ...emptyPersisted(),
           notes: (raw.notes ?? []).map(normalize).filter((n): n is Note => !!n),
           tombstones: raw.tombstones ?? [],
           cursor: raw.cursor ?? 0,

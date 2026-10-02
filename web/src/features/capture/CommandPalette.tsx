@@ -5,7 +5,11 @@ import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { parseCapture } from '@stickydo/core/capture'
 import { docText } from '../notes/doc'
-import { NOTE_SIZES, useNotes } from '../notes/store'
+import { NOTE_SIZES, noteBoardId, noteTitle, sortedBoards, useNotes } from '../notes/store'
+import { collectTags, collectTodos } from '@stickydo/core/capture'
+import { noteColorVar } from '../../design/colors'
+import { boardName, createBoardAndOpen, moveNoteWithUndo, openNote } from '../boards/actions'
+import { setView, toggleSidebar, useView } from '../view'
 import { applyNoteSize } from '../notes/actions'
 import { nextNotePosition } from '../notes/viewport'
 import { useSettings } from '../settings'
@@ -13,7 +17,7 @@ import { useSession } from '../auth/session'
 import { syncNow } from '../../sync/engine'
 import { openStandaloneWindow } from '../../extension/standaloneWindow'
 import { surface } from '../../extension/surface'
-import { createFromCapture, revealNote } from './actions'
+import { createFromCapture } from './actions'
 import { closePalette, openCapture, useCommandUI } from './state'
 
 /**
@@ -35,20 +39,28 @@ function Palette({ onHelp }: { onHelp: () => void }) {
   const present = useIsPresent()
   const [search, setSearch] = useState('')
   const notes = useNotes((s) => s.notes)
+  const boards = useNotes((s) => s.boards)
+  const selectedId = useNotes((s) => s.selectedId)
+  const view = useView((s) => s.view)
+  const onBoard = view.kind === 'board'
   const { undo, redo, create, setEditing } = useNotes.getState()
   const { setTheme, setTilt, tilt } = useSettings()
   const query = search.trim()
 
-  const noteItems = useMemo(
-    () =>
-      query
-        ? notes.map((n) => {
-            const text = docText(n.content).replace(/\s+/g, ' ').trim()
-            return { id: n.id, text: text || '空白便利贴' }
-          })
-        : [],
-    [notes, query],
-  )
+  // 搜索所有看板里的便利贴，显示所在看板
+  const noteItems = useMemo(() => {
+    if (!query) return []
+    const ids = new Set(boards.map((b) => b.id))
+    return notes.map((n) => {
+      const text = docText(n.content).replace(/\s+/g, ' ').trim()
+      const board = noteBoardId(n, ids)
+      return { id: n.id, text: text || '空白便利贴', color: n.color, board: board ? boardName(board) : '收件箱' }
+    })
+  }, [notes, boards, query])
+  const tags = useMemo(() => (query ? collectTags(collectTodos(notes)) : []), [notes, query])
+  const sorted = useMemo(() => sortedBoards(boards), [boards])
+  const selected = onBoard && selectedId ? notes.find((n) => n.id === selectedId) : undefined
+  const selectedBoard = selected ? noteBoardId(selected, new Set(boards.map((b) => b.id))) : null
   const capture = query ? parseCapture(search) : null
 
   return (
@@ -103,8 +115,15 @@ function Palette({ onHelp }: { onHelp: () => void }) {
             {noteItems.length > 0 && (
               <Command.Group heading="便利贴">
                 {noteItems.map((n) => (
-                  <Item key={n.id} value={`note ${n.id} ${n.text}`} onSelect={run(() => revealNote(n.id))} icon={<NoteIcon />}>
-                    <span className="truncate">{n.text}</span>
+                  <Item
+                    key={n.id}
+                    value={`note ${n.id} ${n.text}`}
+                    keywords={[n.board]}
+                    onSelect={run(() => openNote(n.id))}
+                    icon={<span className="size-3 rounded-[3px] border border-black/10" style={{ background: noteColorVar(n.color) }} />}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{n.text}</span>
+                    <span className="ml-2 flex-none text-[12px] text-ink-faint">{n.board}</span>
                   </Item>
                 ))}
               </Command.Group>
@@ -131,12 +150,62 @@ function Palette({ onHelp }: { onHelp: () => void }) {
               </Item>
             </Command.Group>
 
+            {selected && (
+              <Command.Group heading={`选中的「${noteTitle(selected)}」`}>
+                {[null, ...sorted.map((b) => b.id)]
+                  .filter((id) => id !== selectedBoard)
+                  .map((id) => (
+                    <Item key={id ?? 'inbox'} value={`移到 ${boardName(id)} move`} keywords={['移动', 'yd']} onSelect={run(() => moveNoteWithUndo(selected.id, id))} icon={<MoveIcon />}>
+                      移到「{boardName(id)}」
+                    </Item>
+                  ))}
+              </Command.Group>
+            )}
+
+            <Command.Group heading="前往">
+              <Item value="今天 today" keywords={['jt']} onSelect={run(() => setView({ kind: 'today' }))} icon={<SunIcon />}>
+                今天
+              </Item>
+              <Item value="即将 upcoming" keywords={['jj']} onSelect={run(() => setView({ kind: 'upcoming' }))} icon={<CalendarIcon />}>
+                即将
+              </Item>
+              <Item value="已完成 done" keywords={['ywc']} onSelect={run(() => setView({ kind: 'done' }))} icon={<CheckIcon />}>
+                已完成
+              </Item>
+              <Item value="收件箱 inbox" keywords={['sjx']} onSelect={run(() => setView({ kind: 'board', boardId: null }))} icon={<InboxIcon />}>
+                收件箱
+              </Item>
+              {sorted.map((b) => (
+                <Item
+                  key={b.id}
+                  value={`看板 ${b.name} board ${b.id}`}
+                  onSelect={run(() => setView({ kind: 'board', boardId: b.id }))}
+                  icon={<span className="size-2.5 rounded-full border border-black/10" style={{ background: noteColorVar(b.color) }} />}
+                >
+                  {b.name}
+                </Item>
+              ))}
+              {tags.map(({ tag }) => (
+                <Item key={tag} value={`标签 #${tag} tag`} onSelect={run(() => setView({ kind: 'tag', tag }))} icon={<span className="w-4 text-center text-ink-faint">#</span>}>
+                  {tag}
+                </Item>
+              ))}
+              <Item value="侧边栏 sidebar 专注模式" onSelect={run(() => toggleSidebar())} shortcut="[" icon={<PanelIcon />}>
+                收起 / 展开侧边栏
+              </Item>
+            </Command.Group>
+
+            {onBoard && (
             <Command.Group heading="白板">
               {NOTE_SIZES.map((s) => (
                 <Item key={s.key} value={`统一大小 ${s.label} 自动排列 size ${s.key}`} onSelect={run(() => applyNoteSize(s.key))} shortcut={s.key === 's' ? '-' : s.key === 'l' ? '=' : undefined} icon={<GridIcon />}>
                   全部统一为「{s.label}」并自动排列
                 </Item>
               ))}
+            </Command.Group>
+            )}
+
+            <Command.Group heading="编辑">
               <Item value="撤销 undo" onSelect={run(undo)} shortcut="Ctrl Z" icon={<UndoIcon />}>
                 撤销
               </Item>
@@ -186,6 +255,13 @@ function Palette({ onHelp }: { onHelp: () => void }) {
                     <span className="text-ink-muted">{capture.kind === 'todo' ? capture.title : query}</span>
                   </span>
                 </Item>
+                {capture.kind === 'note' && Array.from(query).length <= 60 && (
+                  <Item value="__new_board__" forceMount onSelect={run(() => createBoardAndOpen(query))} icon={<PlusIcon />}>
+                    <span className="truncate">
+                      新建看板「<span className="text-ink-muted">{query}</span>」
+                    </span>
+                  </Item>
+                )}
               </Command.Group>
             )}
           </Command.List>
@@ -210,6 +286,9 @@ function AccountCommands() {
     <>
       <Item value="立即同步 sync" onSelect={run(() => void syncNow())} icon={<SyncIcon />}>
         立即同步
+      </Item>
+      <Item value="账号与设备 修改密码 account password devices" onSelect={run(() => navigate('/account'))} icon={<UserIcon />}>
+        账号与设备
       </Item>
       <Item
         value="退出登录 logout"
@@ -281,3 +360,7 @@ const KeyIcon = () => <Svg><rect x="1.5" y="4" width="13" height="8.5" rx="1.5" 
 const UserIcon = () => <Svg><circle cx="8" cy="5.5" r="2.5" /><path d="M3 13.5c.8-2.4 2.7-3.5 5-3.5s4.2 1.1 5 3.5" /></Svg>
 const SyncIcon = () => <Svg><path d="M13 5.5A5.5 5.5 0 003.3 4.5M3 10.5a5.5 5.5 0 009.7 1M13 2.5v3h-3M3 13.5v-3h3" /></Svg>
 const WindowIcon = () => <Svg><path d="M9.5 2.5h4v4M13.5 2.5L8 8M11.5 9.5v3a1 1 0 01-1 1h-7a1 1 0 01-1-1v-7a1 1 0 011-1h3" /></Svg>
+const CalendarIcon = () => <Svg><rect x="2" y="3" width="12" height="11" rx="2" /><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" /></Svg>
+const InboxIcon = () => <Svg><path d="M2 9.5l1.6-5.2A1 1 0 014.6 3.5h6.8a1 1 0 011 .8L14 9.5V12a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12z" /><path d="M2 9.5h3.5l1 1.5h3l1-1.5H14" /></Svg>
+const PanelIcon = () => <Svg><rect x="2" y="3" width="12" height="10" rx="2" /><path d="M6 3v10" /></Svg>
+const MoveIcon = () => <Svg><path d="M2.5 8h9M9 5l3 3-3 3" /><path d="M13.5 3v10" /></Svg>

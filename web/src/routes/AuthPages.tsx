@@ -9,10 +9,22 @@ import { useSession } from '../features/auth/session'
 
 // ---------- 布局 ----------
 
-function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer: ReactNode }) {
+export function AuthLayout({
+  title,
+  subtitle,
+  children,
+  footer,
+  wide,
+}: {
+  title: string
+  subtitle: string
+  children: ReactNode
+  footer?: ReactNode
+  wide?: boolean
+}) {
   return (
     <div className="board-surface h-full overflow-y-auto">
-      <div className="mx-auto flex min-h-full w-full max-w-[400px] flex-col justify-center px-4 py-12">
+      <div className={`mx-auto flex min-h-full w-full flex-col justify-center px-4 py-12 ${wide ? 'max-w-[520px]' : 'max-w-[400px]'}`}>
         <Link
           to="/"
           className="mb-8 inline-flex items-center gap-2 self-start rounded-lg px-1 text-[13px] text-ink-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
@@ -40,13 +52,13 @@ function AuthLayout({ title, subtitle, children, footer }: { title: string; subt
           </div>
         </motion.div>
 
-        <div className="mt-8 text-center text-[13px] text-ink-muted">{footer}</div>
+        {footer && <div className="mt-8 text-center text-[13px] text-ink-muted">{footer}</div>}
       </div>
     </div>
   )
 }
 
-function FormError({ message }: { message: string | null }) {
+export function FormError({ message }: { message: string | null }) {
   if (!message) return null
   return (
     <div role="alert" className="mb-4 rounded-ui bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
@@ -57,10 +69,10 @@ function FormError({ message }: { message: string | null }) {
 
 // ---------- 表单状态 ----------
 
-type Fields = Record<string, string>
+export type Fields = Record<string, string>
 
 /** 提交表单：把服务端返回的字段错误标到对应输入框，其余错误显示在表单顶部 */
-function useAuthSubmit(fieldNames: string[]) {
+export function useAuthSubmit(fieldNames: string[]) {
   const [fieldErrors, setFieldErrors] = useState<Fields>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)

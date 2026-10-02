@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { docFromText } from '../notes/doc'
-import { applyPushResults, collectChanges, commitLocal, mergePulled, patchSnapshot } from './merge'
-import type { Note, NotesData, RemoteNote } from './model'
+import {
+  applyBoardPushResults,
+  applyPushResults,
+  collectBoardChanges,
+  collectChanges,
+  commitBoards,
+  commitLocal,
+  mergePulled,
+  mergePulledAll,
+  patchSnapshot,
+  patchStep,
+} from './merge'
+import type { Board, Note, NotesData, RemoteBoard, RemoteNote, SyncData } from './model'
 
 const note = (id: string, text: string, over: Partial<Note> = {}): Note => ({
   id, content: docFromText(text), color: 'lemon', x: 0, y: 0, w: 220, h: 200, z: 1,
@@ -10,7 +21,7 @@ const note = (id: string, text: string, over: Partial<Note> = {}): Note => ({
 
 const remote = (id: string, text: string, version: number, updatedAt: number, deleted = false): RemoteNote => ({
   id, version, updatedAt, deleted,
-  note: { id, content: docFromText(text), color: 'sky', x: 5, y: 5, w: 220, h: 200, z: 2 },
+  data: { id, content: docFromText(text), color: 'sky', x: 5, y: 5, w: 220, h: 200, z: 2 },
 })
 
 const text = (n?: Note) => n?.content.content?.[0]?.content?.[0]?.text
@@ -158,5 +169,62 @@ describe('dropUntouchedSamples', () => {
   it('编辑会清除示例标记', () => {
     const s = note('s1', '示例', { sample: true })
     expect(commitLocal(data([s]), [{ ...s, x: 10 }], 1).notes[0].sample).toBeUndefined()
+  })
+})
+
+describe('看板', () => {
+  const board = (id: string, name: string, over: Partial<Board> = {}): Board => ({
+    id, name, color: 'sky', sortOrder: 'a', version: 1, updatedAt: 1000, dirty: false, ...over,
+  })
+  const remoteBoard = (id: string, name: string, version: number, updatedAt: number, deleted = false): RemoteBoard => ({
+    id, version, updatedAt, deleted, data: { id, name, color: 'mint', sortOrder: 'b' },
+  })
+  const all = (over: Partial<SyncData> = {}): SyncData => ({ notes: [], tombstones: [], boards: [], boardTombstones: [], ...over })
+
+  it('改名与删除同样标记改动、留下墓碑，并参与推送', () => {
+    const w = board('w', '工作', { version: 3 })
+    const renamed = commitBoards(all({ boards: [w] }), [{ ...w, name: '工作 2' }], 5000)
+    expect(renamed.boards[0]).toMatchObject({ name: '工作 2', dirty: true, updatedAt: 5000, version: 3 })
+    const deleted = commitBoards(renamed, [], 6000)
+    expect(deleted.boardTombstones).toEqual([{ id: 'w', version: 3, deletedAt: 6000 }])
+    expect(collectBoardChanges(deleted)).toEqual([{ id: 'w', baseVersion: 3, updatedAt: 6000, deleted: true }])
+  })
+
+  it('拉取时便利贴和看板各自按“谁新谁赢”合并', () => {
+    const local = all({
+      notes: [note('a', '本地', { dirty: true, updatedAt: 3000 })],
+      boards: [board('w', '本地名字', { dirty: true, updatedAt: 1500 })],
+    })
+    const merged = mergePulledAll(local, {
+      notes: [remote('a', '服务端', 2, 2000)],
+      boards: [remoteBoard('w', '服务端名字', 4, 2000), remoteBoard('n', '新看板', 5, 2000)],
+    })
+    expect(text(merged.notes[0])).toBe('本地')
+    expect(merged.boards.map((b) => [b.id, b.name, b.dirty])).toEqual([
+      ['w', '服务端名字', false],
+      ['n', '新看板', false],
+    ])
+  })
+
+  it('推送结果：applied 采用服务端版本，stale 采用服务端记录', () => {
+    const w = board('w', '工作', { dirty: true, updatedAt: 2000, version: 0 })
+    const x = board('x', '旧的', { dirty: true, updatedAt: 1000 })
+    const local = all({ boards: [w, x] })
+    const sent = collectBoardChanges(local)
+    const r = applyBoardPushResults(local, sent, [
+      { id: 'w', status: 'applied', remote: remoteBoard('w', '工作', 7, 2000) },
+      { id: 'x', status: 'stale', remote: remoteBoard('x', '别处改过', 8, 3000) },
+    ])
+    expect(r.boards.map((b) => [b.id, b.name, b.version, b.dirty])).toEqual([
+      ['w', '工作', 7, false],
+      ['x', '别处改过', 8, false],
+    ])
+  })
+
+  it('撤销栈的快照也跟上服务端的看板', () => {
+    const step = { notes: [], boards: [board('w', '旧')] }
+    const patched = patchStep(step, { notes: [], boards: [remoteBoard('w', '新', 2, 2000)] })
+    expect(patched.boards[0].name).toBe('新')
+    expect(patched.notes).toBe(step.notes)
   })
 })

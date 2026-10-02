@@ -3,9 +3,10 @@ import { NOTE_COLORS } from '../../design/colors'
 import { deleteWithUndo, stepNoteSize } from './actions'
 import { readingOrder } from './layout'
 import { docFromText } from './doc'
-import { useNotes } from './store'
+import { useNotes, visibleNotes } from './store'
 import { nextNotePosition } from './viewport'
 import { openCapture, openPalette, useCommandUI } from '../capture/state'
+import { toggleSidebar, useView } from '../view'
 
 /** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
 function isTyping(e: KeyboardEvent) {
@@ -54,6 +55,12 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         if (!closeOverlays()) s.select(null)
         return
       }
+      // [：收起或展开侧边栏（专注模式）
+      if (key === '[') {
+        e.preventDefault()
+        toggleSidebar()
+        return
+      }
       // Q：快速记录；T：快速记录一条待办（预填 “[] ”）
       if (key === 'q' || key === 'Q') {
         e.preventDefault()
@@ -65,6 +72,9 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         openCapture('[] ')
         return
       }
+      // 下面这些只在白板上有意义
+      if (useView.getState().view.kind !== 'board') return
+
       if (key === 'n' || key === 'N') {
         e.preventDefault()
         const id = s.create(nextNotePosition())
@@ -81,9 +91,10 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
 
       const nav = { j: 1, ArrowDown: 1, ArrowRight: 1, k: -1, ArrowUp: -1, ArrowLeft: -1 }[key]
       if (nav) {
-        if (s.notes.length === 0) return
+        const notes = visibleNotes()
+        if (notes.length === 0) return
         e.preventDefault()
-        const order = readingOrder(s.notes)
+        const order = readingOrder(notes)
         const i = order.findIndex((n) => n.id === s.selectedId)
         const next = i === -1 ? (nav > 0 ? 0 : order.length - 1) : (i + nav + order.length) % order.length
         s.select(order[next].id)
@@ -103,7 +114,7 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
       if (key === 'Delete' || key === 'Backspace') {
         e.preventDefault()
         // 删除后焦点移到阅读顺序中的下一张，方便连续操作
-        const order = readingOrder(s.notes)
+        const order = readingOrder(visibleNotes())
         const i = order.findIndex((n) => n.id === sel)
         const next = order[i + 1] ?? order[i - 1]
         deleteWithUndo(sel)

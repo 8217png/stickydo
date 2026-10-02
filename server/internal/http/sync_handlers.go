@@ -3,6 +3,8 @@ package httpserver
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/8217png/stickydo/server/internal/http/api"
 	"github.com/8217png/stickydo/server/internal/repo"
 	"github.com/8217png/stickydo/server/internal/service"
@@ -25,7 +27,11 @@ func (h *handlers) SyncPull(ctx context.Context, req api.SyncPullRequestObject) 
 	for i := range res.Notes {
 		notes[i] = noteOut(&res.Notes[i])
 	}
-	return api.SyncPull200JSONResponse{Notes: notes, ServerVersion: res.ServerVersion, HasMore: res.HasMore}, nil
+	boards := make([]api.Board, len(res.Boards))
+	for i := range res.Boards {
+		boards[i] = boardOut(&res.Boards[i])
+	}
+	return api.SyncPull200JSONResponse{Notes: notes, Boards: boards, ServerVersion: res.ServerVersion, HasMore: res.HasMore}, nil
 }
 
 func (h *handlers) SyncPush(ctx context.Context, req api.SyncPushRequestObject) (api.SyncPushResponseObject, error) {
@@ -41,10 +47,21 @@ func (h *handlers) SyncPush(ctx context.Context, req api.SyncPushRequestObject) 
 			changes[i].Data = &service.NoteData{
 				Content: d.Content, Color: string(d.Color), PosX: d.PosX, PosY: d.PosY,
 				Width: d.Width, Height: d.Height, ZIndex: d.ZIndex, Pinned: d.Pinned, Archived: d.Archived,
+				BoardID: d.BoardId,
 			}
 		}
 	}
-	results, version, err := h.sync.Push(ctx, p, changes)
+	var boardChanges []service.BoardChange
+	if req.Body.Boards != nil {
+		boardChanges = make([]service.BoardChange, len(*req.Body.Boards))
+		for i, c := range *req.Body.Boards {
+			boardChanges[i] = service.BoardChange{ID: c.Id, BaseVersion: c.BaseVersion, UpdatedAt: c.UpdatedAt, Deleted: c.Deleted}
+			if c.Data != nil {
+				boardChanges[i].Data = &service.BoardData{Name: c.Data.Name, Color: string(c.Data.Color), SortOrder: c.Data.SortOrder}
+			}
+		}
+	}
+	results, boardResults, version, err := h.sync.Push(ctx, p, changes, boardChanges)
 	if err != nil {
 		return nil, err
 	}
@@ -60,10 +77,37 @@ func (h *handlers) SyncPush(ctx context.Context, req api.SyncPushRequestObject) 
 			out[i].Reason = &reason
 		}
 	}
-	return api.SyncPush200JSONResponse{Results: out, ServerVersion: version}, nil
+	boardOutResults := make([]api.BoardPushResult, len(boardResults))
+	for i, r := range boardResults {
+		boardOutResults[i] = api.BoardPushResult{Id: r.ID, Status: api.BoardPushResultStatus(r.Status)}
+		if r.Board != nil {
+			b := boardOut(r.Board)
+			boardOutResults[i].Board = &b
+		}
+		if r.Reason != "" {
+			reason := r.Reason
+			boardOutResults[i].Reason = &reason
+		}
+	}
+	return api.SyncPush200JSONResponse{Results: out, BoardResults: boardOutResults, ServerVersion: version}, nil
+}
+
+func boardOut(b *repo.Board) api.Board {
+	return api.Board{
+		Id:        b.ID,
+		Version:   b.Version,
+		UpdatedAt: b.UpdatedAt,
+		DeletedAt: b.DeletedAt,
+		Data:      api.BoardData{Name: b.Name, Color: api.NoteColor(b.Color), SortOrder: b.SortOrder},
+	}
 }
 
 func noteOut(n *repo.Note) api.Note {
+	var board *uuid.UUID
+	if n.BoardID.Valid {
+		id := n.BoardID.UUID
+		board = &id
+	}
 	return api.Note{
 		Id:        n.ID,
 		Version:   n.Version,
@@ -79,6 +123,7 @@ func noteOut(n *repo.Note) api.Note {
 			ZIndex:   n.ZIndex,
 			Pinned:   n.Pinned,
 			Archived: n.Archived,
+			BoardId:  board,
 		},
 	}
 }

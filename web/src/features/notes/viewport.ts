@@ -1,4 +1,4 @@
-import { currentNoteSize, useNotes } from './store'
+import { currentNoteSize, visibleNotes } from './store'
 
 export interface Viewport {
   left: number
@@ -27,7 +27,11 @@ export function nextNotePosition(opts: { preferCenter?: boolean } = {}) {
   const v = boardViewport()
   const size = currentNoteSize()
   const jitter = () => Math.round(Math.random() * 40 - 20)
-  if (!v) return { x: 120 + jitter(), y: 120 + jitter() }
+  if (!v) {
+    // 不在白板上（例如在待办列表里记录）：按窗口大小找一个空位
+    const slot = opts.preferCenter && freeSlot({ left: 0, top: 56, width: window.innerWidth, height: window.innerHeight - 56, pointer: null, scrollTo: () => {} }, size)
+    return slot || { x: 120 + jitter(), y: 120 + jitter() }
+  }
   if (opts.preferCenter) {
     const slot = freeSlot(v, size)
     if (slot) return slot
@@ -44,7 +48,7 @@ const GAP = 16
 
 /** 可见区域内、不与任何便利贴重叠、离中央最近的位置 */
 function freeSlot(v: Viewport, size: { w: number; h: number }) {
-  const notes = useNotes.getState().notes.filter((n) => !n.archived)
+  const notes = visibleNotes().filter((n) => !n.archived)
   const free = (x: number, y: number) =>
     notes.every((n) => x + size.w + GAP <= n.x || n.x + n.w + GAP <= x || y + size.h + GAP <= n.y || n.y + n.h + GAP <= y)
   const cx = v.left + v.width / 2 - size.w / 2

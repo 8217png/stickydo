@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto'
+import Dexie from 'dexie'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { docFromText } from '../features/notes/doc'
-import type { Note } from '@stickydo/core/sync'
-import type { Persisted } from '@stickydo/core/storage'
+import type { Board, Note } from '@stickydo/core/sync'
+import { emptyPersisted, type Persisted } from '@stickydo/core/storage'
 import { IdbNotesRepo, migrateFromLocalStorage } from './notesRepo'
 
 const note = (id: string, text: string, over: Partial<Note> = {}): Note => ({
@@ -26,34 +27,61 @@ function installLocalStorage() {
 }
 
 let dbSeq = 0
+const NB = { boards: [], boardTombstones: [] }
 const openRepo = () => IdbNotesRepo.open(`test-${++dbSeq}`)
 
 describe('IdbNotesRepo', () => {
   it('从未保存过的归属返回 null；保存空数据后返回空数据', async () => {
     const repo = await openRepo()
     expect(await repo.load('local')).toBeNull()
-    await repo.save('local', null, { notes: [], tombstones: [], cursor: 0 })
-    expect(await repo.load('local')).toEqual({ notes: [], tombstones: [], cursor: 0 })
+    await repo.save('local', null, emptyPersisted())
+    expect(await repo.load('local')).toEqual(emptyPersisted())
   })
 
   it('保存与读取往返一致，归属之间互不影响', async () => {
     const repo = await openRepo()
-    const a: Persisted = { notes: [note('a', 'A')], tombstones: [{ id: 't', version: 2, deletedAt: 5 }], cursor: 7 }
+    const a: Persisted = { ...NB, notes: [note('a', 'A')], tombstones: [{ id: 't', version: 2, deletedAt: 5 }], cursor: 7 }
     await repo.save('user-1', null, a)
-    await repo.save('user-2', null, { notes: [note('b', 'B')], tombstones: [], cursor: 0 })
+    await repo.save('user-2', null, { ...NB, notes: [note('b', 'B')], tombstones: [], cursor: 0 })
     expect(await repo.load('user-1')).toEqual(a)
     expect((await repo.load('user-2'))?.notes.map((n) => n.id)).toEqual(['b'])
+  })
+
+  it('M3 及之前的数据库（版本 1，没有看板表）升级后照常读取', async () => {
+    const name = `test-${++dbSeq}`
+    const old = new Dexie(name)
+    old.version(1).stores({ notes: '[owner+id], owner', tombstones: '[owner+id], owner', meta: 'owner' })
+    await old.open()
+    await old.table('notes').put({ ...note('a', 'A'), owner: 'local' })
+    await old.table('meta').put({ owner: 'local', cursor: 5 })
+    old.close()
+    const repo = await IdbNotesRepo.open(name)
+    expect(await repo.load('local')).toMatchObject({ notes: [{ id: 'a' }], boards: [], boardTombstones: [], cursor: 5 })
+  })
+
+  it('看板与便利贴一起保存，删除的看板留下墓碑', async () => {
+    const repo = await openRepo()
+    const work: Board = { id: 'w', name: '工作', color: 'sky', sortOrder: 'a0', version: 0, updatedAt: 1, dirty: true }
+    const life: Board = { ...work, id: 'l', name: '生活' }
+    const v1: Persisted = { ...emptyPersisted(), notes: [note('a', 'A', { boardId: 'w' })], boards: [work, life] }
+    await repo.save('u', null, v1)
+    const v2: Persisted = { ...v1, boards: [{ ...work, name: '工作 2' }], boardTombstones: [{ id: 'l', version: 0, deletedAt: 3 }] }
+    await repo.save('u', v1, v2)
+    const loaded = await repo.load('u')
+    expect(loaded?.boards).toEqual([{ ...work, name: '工作 2' }])
+    expect(loaded?.boardTombstones).toEqual([{ id: 'l', version: 0, deletedAt: 3 }])
+    expect(loaded?.notes[0].boardId).toBe('w')
   })
 
   it('只写入变化的行：修改、删除、墓碑与游标', async () => {
     const repo = await openRepo()
     const a = note('a', 'A')
     const b = note('b', 'B')
-    const v1: Persisted = { notes: [a, b], tombstones: [], cursor: 0 }
+    const v1: Persisted = { ...NB, notes: [a, b], tombstones: [], cursor: 0 }
     await repo.save('u', null, v1)
 
     const a2 = { ...a, x: 99 }
-    const v2: Persisted = { notes: [a2], tombstones: [{ id: 'b', version: 0, deletedAt: 9 }], cursor: 3 }
+    const v2: Persisted = { ...NB, notes: [a2], tombstones: [{ id: 'b', version: 0, deletedAt: 9 }], cursor: 3 }
     await repo.save('u', v1, v2)
     const loaded = await repo.load('u')
     expect(loaded?.notes).toEqual([a2])
@@ -65,7 +93,7 @@ describe('IdbNotesRepo', () => {
     const repo = await openRepo()
     const a = note('a', 'A')
     const b = note('b', 'B')
-    const base: Persisted = { notes: [a, b], tombstones: [], cursor: 0 }
+    const base: Persisted = { ...NB, notes: [a, b], tombstones: [], cursor: 0 }
     await repo.save('u', null, base)
     // 标签页 1 改 a，标签页 2 改 b，都以 base 为“上次保存”
     await repo.save('u', base, { ...base, notes: [{ ...a, x: 1 }, b] })
@@ -98,7 +126,7 @@ describe('migrateFromLocalStorage', () => {
 
   it('IndexedDB 里已有该归属的数据时不覆盖', async () => {
     const repo = await openRepo()
-    await repo.save('local', null, { notes: [note('new', '新的')], tombstones: [], cursor: 0 })
+    await repo.save('local', null, { ...NB, notes: [note('new', '新的')], tombstones: [], cursor: 0 })
     ls.setItem('stickydo.notes.v2:local', JSON.stringify({ notes: [note('old', '旧的')], tombstones: [], cursor: 0 }))
     await migrateFromLocalStorage(repo, (n) => n as Note)
     expect((await repo.load('local'))?.notes.map((n) => n.id)).toEqual(['new'])

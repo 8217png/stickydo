@@ -168,7 +168,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 拉取自 since 以来服务端变化的便利贴（含已删除的） */
+        /** 拉取自 since 以来服务端变化的便利贴和看板（含已删除的） */
         get: operations["syncPull"];
         put?: never;
         post?: never;
@@ -188,9 +188,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 上传本地改过的便利贴，逐条比较新旧
+         * 上传本地改过的便利贴和看板，逐条比较新旧
          * @description 对每条改动：服务端自客户端上次同步后没变（base_version 相同），或客户端的
          *     updated_at 更晚，则写入（applied）；否则服务端更新（stale），返回服务端当前记录。
+         *     看板先于便利贴处理，同一批里新建的看板可以直接被便利贴引用。
          */
         post: operations["syncPush"];
         delete?: never;
@@ -309,6 +310,11 @@ export interface components {
             z_index: number;
             pinned: boolean;
             archived: boolean;
+            /**
+             * Format: uuid
+             * @description 所在看板；为空或看板不存在时在收件箱
+             */
+            board_id?: string | null;
         };
         Note: {
             /** Format: uuid */
@@ -340,8 +346,37 @@ export interface components {
             deleted: boolean;
             data?: components["schemas"]["NoteData"];
         };
+        /** @description 看板（整条，不是补丁） */
+        BoardData: {
+            name: string;
+            color: components["schemas"]["NoteColor"];
+            /** @description 分数索引，按字节序排序 */
+            sort_order: string;
+        };
+        Board: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            deleted_at?: string | null;
+            data: components["schemas"]["BoardData"];
+        };
+        BoardChange: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            base_version: number;
+            /** Format: date-time */
+            updated_at: string;
+            deleted: boolean;
+            data?: components["schemas"]["BoardData"];
+        };
         SyncPullResponse: {
             notes: components["schemas"]["Note"][];
+            boards: components["schemas"]["Board"][];
             /**
              * Format: int64
              * @description 下次 pull 用的 since
@@ -352,6 +387,7 @@ export interface components {
         };
         SyncPushRequest: {
             notes: components["schemas"]["NoteChange"][];
+            boards?: components["schemas"]["BoardChange"][];
         };
         SyncPushResult: {
             /** Format: uuid */
@@ -364,8 +400,17 @@ export interface components {
             note?: components["schemas"]["Note"];
             reason?: string;
         };
+        BoardPushResult: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "applied" | "stale" | "invalid";
+            board?: components["schemas"]["Board"];
+            reason?: string;
+        };
         SyncPushResponse: {
             results: components["schemas"]["SyncPushResult"][];
+            board_results: components["schemas"]["BoardPushResult"][];
             /** Format: int64 */
             server_version: number;
         };

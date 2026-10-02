@@ -1,11 +1,12 @@
-import { memo, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { Rnd } from 'react-rnd'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { NOTE_COLORS, noteColorVar } from '../../design/colors'
 import { useSettings } from '../settings'
-import { type Note, noteTilt, useNotes } from './store'
+import { type Note, noteTilt, type Snapshot, snapshotNow, sortedBoards, useNotes } from './store'
 import { deleteWithUndo } from './actions'
+import { boardOfNote, moveNoteWithUndo } from '../boards/actions'
 import { cleanDoc, docIsEmpty, type NoteDoc, trimDoc } from './doc'
 import { noteExtensions } from './extensions'
 import { NoteRenderer, toggleTaskAt } from './NoteRenderer'
@@ -56,15 +57,24 @@ export const StickyNote = memo(function StickyNote({ note, selected, editing }: 
         bringToFront(note.id)
         select(note.id)
       }}
-      onDrag={() => {
+      onDrag={(e) => {
         if (!draggedRef.current) {
           draggedRef.current = true
           setLifted(true)
         }
+        highlightDropTarget(dropTargetAt(e))
       }}
-      onDragStop={(_e, d) => {
+      onDragStop={(e, d) => {
         setLifted(false)
         setInteracting(false)
+        const target = dropTargetAt(e)
+        highlightDropTarget(null)
+        const boardId = target ? target.dataset.dropBoard || null : undefined
+        if (draggedRef.current && boardId !== undefined && boardId !== boardOfNote(note.id)) {
+          // 拖到侧边栏的另一个看板上：移过去，位置不变
+          moveNoteWithUndo(note.id, boardId)
+          return
+        }
         if (draggedRef.current && (d.x !== note.x || d.y !== note.y)) {
           update(note.id, { x: Math.round(d.x), y: Math.round(d.y) })
         }
@@ -146,9 +156,9 @@ function NoteContent({ note }: { note: Note }) {
  * 原地编辑：Tiptap 所见即所得编辑器。Markdown 写法会即时变成格式（# 标题、- 列表、[] 待办、**粗体** 等）。
  * Esc 或 Ctrl/⌘+Enter 结束编辑；点到别处也会结束。
  */
-function NoteEditor({ note, onDone }: { note: Note; onDone: (content: NoteDoc, snapshot: Note[]) => void }) {
+function NoteEditor({ note, onDone }: { note: Note; onDone: (content: NoteDoc, snapshot: Snapshot) => void }) {
   // 进入编辑时的快照：编辑结束、内容确实变了才作为一步撤销记录
-  const snapshot = useRef(useNotes.getState().notes)
+  const snapshot = useRef(snapshotNow())
   const done = useRef(false)
   const finish = (doc: NoteDoc) => {
     if (done.current) return
@@ -221,6 +231,7 @@ function NoteToolbar({ note, visible }: { note: Note; visible: boolean }) {
         </button>
       ))}
       <span className="mx-1 h-4 w-px bg-chrome-border" />
+      <MoveMenu note={note} />
       <button
         type="button"
         title="删除（Delete）"
@@ -234,6 +245,88 @@ function NoteToolbar({ note, visible }: { note: Note; visible: boolean }) {
       </button>
     </div>
   )
+}
+
+/** 操作栏上的“移到看板”：列出收件箱和所有看板 */
+function MoveMenu({ note }: { note: Note }) {
+  const [open, setOpen] = useState(false)
+  const boards = useNotes((s) => s.boards)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const away = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    window.addEventListener('pointerdown', away)
+    return () => window.removeEventListener('pointerdown', away)
+  }, [open])
+  const current = boardOfNote(note.id)
+  const targets = [null, ...sortedBoards(boards).map((b) => b.id)].filter((id) => id !== current)
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        title="移到看板（也可以拖到侧边栏的看板上）"
+        aria-label="移到看板"
+        aria-expanded={open}
+        className="grid size-6 place-items-center rounded-md text-ink-muted transition-colors hover:bg-chrome-hover hover:text-ink aria-expanded:bg-chrome-hover"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2.5 8h9M9 5l3 3-3 3" />
+          <path d="M13.5 3v10" />
+        </svg>
+      </button>
+      {open && (
+        <div role="menu" className="absolute top-8 left-0 z-10 max-h-64 w-44 overflow-y-auto rounded-ui border border-chrome-border bg-surface p-1 shadow-chrome">
+          <p className="px-2.5 pt-1 pb-1.5 text-[11.5px] text-ink-faint">移到…</p>
+          {targets.length === 1 && boards.length === 0 && (
+            <p className="px-2.5 pb-1.5 text-[12px] leading-snug text-ink-faint">在侧边栏新建看板后，可以把便利贴分开放</p>
+          )}
+          {targets.map((id) => {
+            const b = id ? boards.find((x) => x.id === id) : undefined
+            return (
+              <button
+                key={id ?? 'inbox'}
+                type="button"
+                role="menuitem"
+                className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] text-ink transition-colors hover:bg-chrome-hover"
+                onClick={() => {
+                  setOpen(false)
+                  moveNoteWithUndo(note.id, id)
+                }}
+              >
+                <span
+                  className="size-2.5 shrink-0 rounded-full border border-black/10"
+                  style={{ background: b ? noteColorVar(b.color) : 'transparent' }}
+                />
+                <span className="truncate">{b?.name ?? '收件箱'}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 拖动时指针下方的侧边栏看板（data-drop-board） */
+function dropTargetAt(e: MouseEvent | TouchEvent): HTMLElement | null {
+  const p = 'touches' in e ? (e.touches[0] ?? e.changedTouches[0]) : e
+  if (!p) return null
+  for (const el of document.elementsFromPoint(p.clientX, p.clientY)) {
+    const t = (el as HTMLElement).closest?.('[data-drop-board]')
+    if (t) return t as HTMLElement
+  }
+  return null
+}
+
+let dropHighlighted: HTMLElement | null = null
+function highlightDropTarget(el: HTMLElement | null) {
+  if (el === dropHighlighted) return
+  dropHighlighted?.removeAttribute('data-drop-active')
+  el?.setAttribute('data-drop-active', 'true')
+  dropHighlighted = el
 }
 
 function ResizeGrip() {

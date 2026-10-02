@@ -326,3 +326,135 @@ func TestSyncPullPagination(t *testing.T) {
 		t.Fatalf("seen = %v, since = %d", seen, since)
 	}
 }
+
+// ---------- 看板 ----------
+
+func boardChange(id string, base int64, at time.Time, name string) map[string]any {
+	m := map[string]any{"id": id, "base_version": base, "updated_at": at.UTC().Format(time.RFC3339Nano), "deleted": name == ""}
+	if name != "" {
+		m["data"] = map[string]any{"name": name, "color": "sky", "sort_order": "a0"}
+	}
+	return m
+}
+
+func noteIn(id string, at time.Time, text string, board any) map[string]any {
+	d := noteData(text)
+	d["board_id"] = board
+	return map[string]any{"id": id, "base_version": 0, "updated_at": at.UTC().Format(time.RFC3339Nano), "deleted": false, "data": d}
+}
+
+func boardResult(t *testing.T, r resp, i int) map[string]any {
+	t.Helper()
+	rs := r.body["board_results"].([]any)
+	if len(rs) <= i {
+		t.Fatalf("board_results = %v", r.body)
+	}
+	return rs[i].(map[string]any)
+}
+
+// 同一批里新建看板和其中的便利贴；另一台设备拉取到两者
+func TestSyncBoardsRoundTrip(t *testing.T) {
+	e := newEnv(t)
+	s := e.register(uniqueEmail(), "correct horse")
+	board := uuid.Must(uuid.NewV7()).String()
+	note := uuid.Must(uuid.NewV7()).String()
+	now := e.clock.Now()
+
+	r := e.do("POST", "/sync/push", s.access, map[string]any{
+		"notes":  []any{noteIn(note, now, "周会要点", board)},
+		"boards": []any{boardChange(board, 0, now, "工作")},
+	})
+	expectStatus(t, r, 200)
+	b := boardResult(t, r, 0)
+	if b["status"] != "applied" || b["board"].(map[string]any)["data"].(map[string]any)["name"] != "工作" {
+		t.Fatalf("board push: %v", b)
+	}
+	n := one(t, r)
+	if n.status != "applied" {
+		t.Fatalf("note push: %+v", n)
+	}
+	got := r.body["results"].([]any)[0].(map[string]any)["note"].(map[string]any)["data"].(map[string]any)["board_id"]
+	if got != board {
+		t.Fatalf("note board_id = %v", got)
+	}
+
+	p := e.pull(s.access, 0, 0)
+	boards := p.body["boards"].([]any)
+	if len(boards) != 1 || boards[0].(map[string]any)["id"] != board {
+		t.Fatalf("pull boards: %v", p.body)
+	}
+	if p.body["notes"].([]any)[0].(map[string]any)["data"].(map[string]any)["board_id"] != board {
+		t.Fatalf("pull note board: %v", p.body)
+	}
+
+	// 改名：服务端没变，客户端写入；旧的编辑（基于旧版本且更早）被判为 stale
+	v1 := int64(b["board"].(map[string]any)["version"].(float64))
+	e.clock.Advance(time.Minute)
+	r = e.do("POST", "/sync/push", s.access, map[string]any{"notes": []any{}, "boards": []any{boardChange(board, v1, e.clock.Now(), "工作 2")}})
+	expectStatus(t, r, 200)
+	if boardResult(t, r, 0)["status"] != "applied" {
+		t.Fatalf("rename: %v", r.body)
+	}
+	r = e.do("POST", "/sync/push", s.access, map[string]any{"notes": []any{}, "boards": []any{boardChange(board, v1, now, "旧名字")}})
+	expectStatus(t, r, 200)
+	stale := boardResult(t, r, 0)
+	if stale["status"] != "stale" || stale["board"].(map[string]any)["data"].(map[string]any)["name"] != "工作 2" {
+		t.Fatalf("stale rename: %v", stale)
+	}
+
+	// 删除看板：软删除，拉取时带 deleted_at；便利贴不受影响
+	e.clock.Advance(time.Minute)
+	r = e.do("POST", "/sync/push", s.access, map[string]any{"notes": []any{}, "boards": []any{boardChange(board, 0, e.clock.Now(), "")}})
+	expectStatus(t, r, 200)
+	if boardResult(t, r, 0)["board"].(map[string]any)["deleted_at"] == nil {
+		t.Fatalf("delete board: %v", r.body)
+	}
+	p = e.pull(s.access, 0, 0)
+	if len(p.body["notes"].([]any)) != 1 || p.body["boards"].([]any)[0].(map[string]any)["deleted_at"] == nil {
+		t.Fatalf("pull after delete: %v", p.body)
+	}
+}
+
+// 引用不存在或别人的看板：便利贴照常保存，放进收件箱
+func TestSyncNoteWithUnknownBoardGoesToInbox(t *testing.T) {
+	e := newEnv(t)
+	alice := e.register(uniqueEmail(), "correct horse")
+	bob := e.register(uniqueEmail(), "correct horse")
+	aliceBoard := uuid.Must(uuid.NewV7()).String()
+	now := e.clock.Now()
+	expectStatus(t, e.do("POST", "/sync/push", alice.access, map[string]any{"notes": []any{}, "boards": []any{boardChange(aliceBoard, 0, now, "私人")}}), 200)
+
+	for _, board := range []string{aliceBoard, uuid.Must(uuid.NewV7()).String()} {
+		r := e.do("POST", "/sync/push", bob.access, map[string]any{"notes": []any{noteIn(uuid.Must(uuid.NewV7()).String(), now, "x", board)}})
+		expectStatus(t, r, 200)
+		n := r.body["results"].([]any)[0].(map[string]any)
+		if n["status"] != "applied" || n["note"].(map[string]any)["data"].(map[string]any)["board_id"] != nil {
+			t.Fatalf("board %s: %v", board, n)
+		}
+	}
+	// 别人的看板 id 不能被占用
+	r := e.do("POST", "/sync/push", bob.access, map[string]any{"notes": []any{}, "boards": []any{boardChange(aliceBoard, 0, now, "抢")}})
+	expectStatus(t, r, 200)
+	if boardResult(t, r, 0)["status"] != "invalid" {
+		t.Fatalf("foreign board id: %v", r.body)
+	}
+	if got := e.pull(bob.access, 0, 0).body["boards"].([]any); len(got) != 0 {
+		t.Fatalf("bob sees boards: %v", got)
+	}
+}
+
+func TestSyncBoardValidation(t *testing.T) {
+	e := newEnv(t)
+	s := e.register(uniqueEmail(), "correct horse")
+	id := uuid.Must(uuid.NewV7()).String()
+	c := boardChange(id, 0, e.clock.Now(), "x")
+	c["data"].(map[string]any)["name"] = "   "
+	r := e.do("POST", "/sync/push", s.access, map[string]any{"notes": []any{}, "boards": []any{c}})
+	expectStatus(t, r, 200)
+	if boardResult(t, r, 0)["status"] != "invalid" {
+		t.Fatalf("blank name: %v", r.body)
+	}
+	// 名称过长由 OpenAPI 校验拦下
+	c["data"].(map[string]any)["name"] = strings.Repeat("长", 61)
+	expectStatus(t, e.do("POST", "/sync/push", s.access, map[string]any{"notes": []any{}, "boards": []any{c}}), 422)
+}

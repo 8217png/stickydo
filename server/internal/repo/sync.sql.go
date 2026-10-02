@@ -12,6 +12,45 @@ import (
 	"github.com/google/uuid"
 )
 
+const boardOwnedBy = `-- name: BoardOwnedBy :one
+SELECT EXISTS (SELECT 1 FROM boards WHERE id = $1 AND user_id = $2)
+`
+
+type BoardOwnedByParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// 便利贴引用的看板是否属于该用户（已删除的看板也算，便利贴照常保存）
+func (q *Queries) BoardOwnedBy(ctx context.Context, arg BoardOwnedByParams) (bool, error) {
+	row := q.db.QueryRow(ctx, boardOwnedBy, arg.ID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const getBoardForUpdate = `-- name: GetBoardForUpdate :one
+SELECT id, user_id, name, color, sort_order, created_at, updated_at, deleted_at, version, field_versions FROM boards WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetBoardForUpdate(ctx context.Context, id uuid.UUID) (Board, error) {
+	row := q.db.QueryRow(ctx, getBoardForUpdate, id)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Color,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Version,
+		&i.FieldVersions,
+	)
+	return i, err
+}
+
 const getNoteForUpdate = `-- name: GetNoteForUpdate :one
 SELECT id, user_id, board_id, title, content, color, pinned, archived, pos_x, pos_y, width, height, z_index, sort_order, created_at, updated_at, deleted_at, version, field_versions FROM notes WHERE id = $1 FOR UPDATE
 `
@@ -54,15 +93,58 @@ func (q *Queries) GetSyncSeq(ctx context.Context, userID uuid.UUID) (int64, erro
 	return last_version, err
 }
 
+const insertBoard = `-- name: InsertBoard :one
+INSERT INTO boards (id, user_id, name, color, sort_order, created_at, updated_at, version)
+VALUES ($1, $2, $3, $4, $5, now(), $6, $7)
+ON CONFLICT (id) DO NOTHING
+RETURNING id, user_id, name, color, sort_order, created_at, updated_at, deleted_at, version, field_versions
+`
+
+type InsertBoardParams struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Name      string
+	Color     string
+	SortOrder string
+	UpdatedAt time.Time
+	Version   int64
+}
+
+func (q *Queries) InsertBoard(ctx context.Context, arg InsertBoardParams) (Board, error) {
+	row := q.db.QueryRow(ctx, insertBoard,
+		arg.ID,
+		arg.UserID,
+		arg.Name,
+		arg.Color,
+		arg.SortOrder,
+		arg.UpdatedAt,
+		arg.Version,
+	)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Color,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Version,
+		&i.FieldVersions,
+	)
+	return i, err
+}
+
 const insertNote = `-- name: InsertNote :one
 INSERT INTO notes (
     id, user_id, content, color, pinned, archived,
     pos_x, pos_y, width, height, z_index,
-    created_at, updated_at, deleted_at, version
+    created_at, updated_at, deleted_at, version, board_id
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
-    now(), $12, $13, $14
+    now(), $12, $13, $14, $15
 )
 ON CONFLICT (id) DO NOTHING
 RETURNING id, user_id, board_id, title, content, color, pinned, archived, pos_x, pos_y, width, height, z_index, sort_order, created_at, updated_at, deleted_at, version, field_versions
@@ -83,6 +165,7 @@ type InsertNoteParams struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 	Version   int64
+	BoardID   uuid.NullUUID
 }
 
 func (q *Queries) InsertNote(ctx context.Context, arg InsertNoteParams) (Note, error) {
@@ -101,6 +184,7 @@ func (q *Queries) InsertNote(ctx context.Context, arg InsertNoteParams) (Note, e
 		arg.UpdatedAt,
 		arg.DeletedAt,
 		arg.Version,
+		arg.BoardID,
 	)
 	var i Note
 	err := row.Scan(
@@ -142,6 +226,36 @@ func (q *Queries) LockSyncSeq(ctx context.Context, userID uuid.UUID) (int64, err
 	return last_version, err
 }
 
+const markBoardDeleted = `-- name: MarkBoardDeleted :one
+UPDATE boards SET updated_at = $2, deleted_at = $2, version = $3
+WHERE id = $1
+RETURNING id, user_id, name, color, sort_order, created_at, updated_at, deleted_at, version, field_versions
+`
+
+type MarkBoardDeletedParams struct {
+	ID        uuid.UUID
+	UpdatedAt time.Time
+	Version   int64
+}
+
+func (q *Queries) MarkBoardDeleted(ctx context.Context, arg MarkBoardDeletedParams) (Board, error) {
+	row := q.db.QueryRow(ctx, markBoardDeleted, arg.ID, arg.UpdatedAt, arg.Version)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Color,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Version,
+		&i.FieldVersions,
+	)
+	return i, err
+}
+
 const markNoteDeleted = `-- name: MarkNoteDeleted :one
 UPDATE notes SET updated_at = $2, deleted_at = $2, version = $3
 WHERE id = $1
@@ -179,6 +293,50 @@ func (q *Queries) MarkNoteDeleted(ctx context.Context, arg MarkNoteDeletedParams
 		&i.FieldVersions,
 	)
 	return i, err
+}
+
+const pullBoards = `-- name: PullBoards :many
+SELECT id, user_id, name, color, sort_order, created_at, updated_at, deleted_at, version, field_versions FROM boards
+WHERE user_id = $1 AND version > $2 AND version <= $3
+ORDER BY version
+`
+
+type PullBoardsParams struct {
+	UserID uuid.UUID
+	Since  int64
+	Upto   int64
+}
+
+// 看板很少，一次取完 (since, upto] 区间内的全部变化
+func (q *Queries) PullBoards(ctx context.Context, arg PullBoardsParams) ([]Board, error) {
+	rows, err := q.db.Query(ctx, pullBoards, arg.UserID, arg.Since, arg.Upto)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Board{}
+	for rows.Next() {
+		var i Board
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Color,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Version,
+			&i.FieldVersions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const pullNotes = `-- name: PullNotes :many
@@ -254,11 +412,52 @@ func (q *Queries) SetSyncSeq(ctx context.Context, arg SetSyncSeqParams) error {
 	return err
 }
 
+const updateBoard = `-- name: UpdateBoard :one
+UPDATE boards SET
+    name = $2, color = $3, sort_order = $4, updated_at = $5, deleted_at = NULL, version = $6
+WHERE id = $1
+RETURNING id, user_id, name, color, sort_order, created_at, updated_at, deleted_at, version, field_versions
+`
+
+type UpdateBoardParams struct {
+	ID        uuid.UUID
+	Name      string
+	Color     string
+	SortOrder string
+	UpdatedAt time.Time
+	Version   int64
+}
+
+func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board, error) {
+	row := q.db.QueryRow(ctx, updateBoard,
+		arg.ID,
+		arg.Name,
+		arg.Color,
+		arg.SortOrder,
+		arg.UpdatedAt,
+		arg.Version,
+	)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Color,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Version,
+		&i.FieldVersions,
+	)
+	return i, err
+}
+
 const updateNote = `-- name: UpdateNote :one
 UPDATE notes SET
     content = $2, color = $3, pinned = $4, archived = $5,
     pos_x = $6, pos_y = $7, width = $8, height = $9, z_index = $10,
-    updated_at = $11, deleted_at = $12, version = $13
+    updated_at = $11, deleted_at = $12, version = $13, board_id = $14
 WHERE id = $1
 RETURNING id, user_id, board_id, title, content, color, pinned, archived, pos_x, pos_y, width, height, z_index, sort_order, created_at, updated_at, deleted_at, version, field_versions
 `
@@ -277,6 +476,7 @@ type UpdateNoteParams struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 	Version   int64
+	BoardID   uuid.NullUUID
 }
 
 func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, error) {
@@ -294,6 +494,7 @@ func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, e
 		arg.UpdatedAt,
 		arg.DeletedAt,
 		arg.Version,
+		arg.BoardID,
 	)
 	var i Note
 	err := row.Scan(
