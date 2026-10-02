@@ -4,7 +4,7 @@ import { deleteWithUndo, stepNoteSize } from './actions'
 import { readingOrder } from './layout'
 import { docFromText } from './doc'
 import { useNotes, visibleNotes } from './store'
-import { nextNotePosition } from './viewport'
+import { nextNotePosition, scrollNoteIntoView } from './viewport'
 import { closePalette, openCapture, openPalette, useCommandUI } from '../capture/state'
 import { toggleBoardLayout, toggleSidebar, useBoardLayout, useView } from '../view'
 
@@ -108,7 +108,7 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         const i = order.findIndex((n) => n.id === s.selectedId)
         const next = i === -1 ? (nav > 0 ? 0 : order.length - 1) : (i + nav + order.length) % order.length
         s.select(order[next].id)
-        document.querySelector(`[data-note="${order[next].id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+        scrollNoteIntoView(order[next].id)
         return
       }
 

@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 import { noteBoardId, noteTitle, useNotes } from '../notes/store'
 import { INBOX, setView, useView } from '../view'
+import { scrollNoteIntoView } from '../notes/viewport'
 
 /** 看板名称（收件箱为 null） */
 export function boardName(boardId: string | null): string {
@@ -26,7 +27,7 @@ export function openNote(id: string, opts: { edit?: boolean } = {}) {
       const s = useNotes.getState()
       if (opts.edit) s.setEditing(id)
       else s.select(id)
-      document.querySelector(`[data-note="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+      scrollNoteIntoView(id)
     }),
   )
 }
