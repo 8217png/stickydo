@@ -6,6 +6,9 @@ import { useBoardShortcuts } from '../features/notes/useBoardShortcuts'
 import { PopupResizeGrip } from '../extension/PopupResizeGrip'
 import { trackStandaloneWindowBounds } from '../extension/standaloneWindow'
 import { surface } from '../extension/surface'
+import { QuickCapture } from '../features/capture/QuickCapture'
+import { CommandPalette } from '../features/capture/CommandPalette'
+import { closeCommandUI } from '../features/capture/state'
 
 /** 白板页：快捷键只在这一页生效 */
 export function BoardPage() {
@@ -14,6 +17,7 @@ export function BoardPage() {
   const helpOpenRef = useRef(helpOpen)
   helpOpenRef.current = helpOpen
   const closeOverlays = useCallback(() => {
+    if (closeCommandUI()) return true
     if (!helpOpenRef.current) return false
     setHelpOpen(false)
     return true
@@ -28,6 +32,8 @@ export function BoardPage() {
       <TopBar onHelp={toggleHelp} />
       <Whiteboard />
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <QuickCapture />
+      <CommandPalette onHelp={toggleHelp} />
       {surface === 'ext-popup' && <PopupResizeGrip />}
     </div>
   )

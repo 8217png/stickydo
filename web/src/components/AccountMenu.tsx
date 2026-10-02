@@ -49,7 +49,7 @@ export function AccountMenu() {
     return (
       <Link
         to="/login"
-        className="ml-0.5 inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] font-medium text-ink transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-focus"
+        className="ml-0.5 inline-flex h-8 items-center whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium text-ink transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-focus"
       >
         登录
       </Link>

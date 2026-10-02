@@ -5,6 +5,7 @@ import { applyNoteSize } from '../features/notes/actions'
 import { openStandaloneWindow } from '../extension/standaloneWindow'
 import { isExtension, surface } from '../extension/surface'
 import { AccountMenu } from './AccountMenu'
+import { openCapture, openPalette } from '../features/capture/state'
 
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' }
 const THEME_LABEL: Record<ThemePref, string> = { system: '跟随系统', light: '浅色', dark: '暗色' }
@@ -20,7 +21,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
       <div className="pointer-events-auto flex items-center gap-2 rounded-ui border border-chrome-border bg-chrome px-3 py-1.5 shadow-chrome backdrop-blur-md">
         <Logo />
         <span className={`text-[14px] font-semibold tracking-tight max-sm:hidden ${isExtension ? 'hidden' : ''}`}>Sticky-Do</span>
-        <span className={`ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint ${isExtension ? 'hidden' : ''}`}>M1</span>
+        <span className={`ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint ${isExtension ? 'hidden' : ''}`}>M3</span>
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
@@ -51,15 +52,23 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
             )
           })}
         </div>
-        <span className="mx-1 h-4 w-px bg-chrome-border" />
+        <span className="mx-1 h-4 w-px bg-chrome-border max-[420px]:hidden" />
+        <IconButton title="快速记录（Q）" onClick={() => openCapture()}>
+          <path d="M8 3v10M3 8h10" />
+        </IconButton>
+        <IconButton title="命令面板（Ctrl+K）" onClick={openPalette}>
+          <circle cx="7" cy="7" r="4" /><path d="M10 10l3.5 3.5" />
+        </IconButton>
+        <span className="mx-1 h-4 w-px bg-chrome-border max-[420px]:hidden" />
         <IconButton title="撤销（Ctrl+Z）" disabled={!canUndo} onClick={undo}>
           <path d="M5.5 4L3 6.5 5.5 9M3.5 6.5h6a3.5 3.5 0 010 7H8" />
         </IconButton>
-        <IconButton title="重做（Ctrl+Shift+Z）" disabled={!canRedo} onClick={redo}>
+        <IconButton title="重做（Ctrl+Shift+Z）" disabled={!canRedo} onClick={redo} className="max-[420px]:hidden">
           <path d="M10.5 4L13 6.5 10.5 9M12.5 6.5h-6a3.5 3.5 0 000 7H8" />
         </IconButton>
-        <span className="mx-1 h-4 w-px bg-chrome-border" />
-        <IconButton title={tilt ? '倾斜：开' : '倾斜：关'} active={tilt} onClick={() => setTilt(!tilt)}>
+        <span className="mx-1 h-4 w-px bg-chrome-border max-[420px]:hidden" />
+        {/* 窄屏放不下：倾斜和快捷键速查只在宽屏显示，都可以在命令面板里找到 */}
+        <IconButton title={tilt ? '倾斜：开' : '倾斜：关'} active={tilt} className="max-sm:hidden" onClick={() => setTilt(!tilt)}>
           <rect x="4" y="4" width="8" height="8" rx="1" transform={tilt ? 'rotate(-8 8 8)' : undefined} />
         </IconButton>
         <IconButton title={`主题：${THEME_LABEL[theme]}`} onClick={() => setTheme(THEME_NEXT[theme])}>
@@ -72,7 +81,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
             <path d="M9.5 2.5h4v4M13.5 2.5L8 8M11.5 9.5v3a1 1 0 01-1 1h-7a1 1 0 01-1-1v-7a1 1 0 011-1h3" />
           </IconButton>
         )}
-        <IconButton title="快捷键（?）" onClick={onHelp}>
+        <IconButton title="快捷键（?）" onClick={onHelp} className="max-sm:hidden">
           <rect x="1.5" y="4" width="13" height="8.5" rx="1.5" /><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M5 10h6" />
         </IconButton>
         {surface === 'web' && <AccountMenu />}
@@ -81,7 +90,14 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
   )
 }
 
-function IconButton(props: { title: string; onClick: () => void; disabled?: boolean; active?: boolean; children: ReactNode }) {
+function IconButton(props: {
+  title: string
+  onClick: () => void
+  disabled?: boolean
+  active?: boolean
+  className?: string
+  children: ReactNode
+}) {
   return (
     <button
       type="button"
@@ -89,7 +105,7 @@ function IconButton(props: { title: string; onClick: () => void; disabled?: bool
       aria-label={props.title}
       disabled={props.disabled}
       onClick={props.onClick}
-      className={`grid size-8 place-items-center rounded-lg transition-colors hover:bg-chrome-hover disabled:opacity-35 disabled:hover:bg-transparent ${props.active ? 'text-ink' : 'text-ink-muted'}`}
+      className={`grid size-8 place-items-center rounded-lg transition-colors hover:bg-chrome-hover disabled:opacity-35 disabled:hover:bg-transparent ${props.active ? 'text-ink' : 'text-ink-muted'} ${props.className ?? ''}`}
     >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
         {props.children}

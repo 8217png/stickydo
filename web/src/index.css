@@ -257,6 +257,85 @@ body {
   text-decoration-color: var(--note-ink-muted);
 }
 
+/* ---------- 命令面板（cmdk） ---------- */
+.cmdk [cmdk-group-heading] {
+  padding: 8px 12px 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+.cmdk [cmdk-group]:not([hidden]) + [cmdk-group] {
+  margin-top: 2px;
+}
+
+/* ---------- 快速记录输入框：输入框与高亮层必须完全一致 ---------- */
+.capture-field {
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  padding: 16px 18px;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.capture-field mark {
+  color: inherit;
+  /* 只加底色，不改变文字位置，否则会与输入框错位 */
+  padding: 0;
+  margin: 0;
+}
+
+/* ---------- 待办的时间、优先级、标签 ---------- */
+.todo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+  text-decoration: none;
+  font-weight: 400;
+}
+.todo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--note-ink-muted);
+  background: rgb(0 0 0 / 0.055);
+  white-space: nowrap;
+}
+[data-theme='dark'] .todo-chip { background: rgb(255 255 255 / 0.08); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .todo-chip { background: rgb(255 255 255 / 0.08); }
+}
+/* 逾期不刷红色，只用柔和的橙色（docs/frontend-design.md §3.5） */
+.todo-chip[data-status='overdue'] { color: var(--overdue); }
+.todo-chip[data-status='today'] { color: var(--note-ink); }
+.todo-chip[data-priority='3'] { color: var(--note-ink); font-weight: 600; }
+/* 已完成的待办：标签跟着变淡，但不划线 */
+.note-md li.task-list-item[data-checked='true'] .todo-meta { opacity: 0.6; }
+
+/* 编辑时：用待办项上的 data-meta-* 在文字下方显示同样的信息 */
+.note-editor ul[data-type='taskList'] > li {
+  flex-wrap: wrap;
+}
+.note-editor ul[data-type='taskList'] > li:is([data-meta-due], [data-meta-priority], [data-meta-tags])::after {
+  content: attr(data-meta-due) '  ' attr(data-meta-priority) '  ' attr(data-meta-tags);
+  flex-basis: 100%;
+  padding-left: 21px;
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--note-ink-muted);
+  white-space: pre;
+  pointer-events: none;
+}
+
 /* ---------- Tiptap 编辑器 ---------- */
 .note-editor {
   min-height: 100%;

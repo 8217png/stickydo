@@ -5,6 +5,8 @@ const GROUPS: { title: string; items: [keys: string[], label: string][] }[] = [
     title: '新建',
     items: [
       [['双击空白处'], '在该位置新建便利贴'],
+      [['Q'], '快速记录（[] 开头是待办）'],
+      [['T'], '快速记录一条待办'],
       [['N'], '新建便利贴'],
       [['Ctrl', 'V'], '粘贴文字生成便利贴'],
     ],
@@ -22,6 +24,7 @@ const GROUPS: { title: string; items: [keys: string[], label: string][] }[] = [
   {
     title: '全局',
     items: [
+      [['Ctrl', 'K'], '命令面板：搜索便利贴、执行操作'],
       [['-', '='], '全部便利贴缩小 / 放大一档并自动排列'],
       [['Ctrl', 'Z'], '撤销（最近 20 步）'],
       [['Ctrl', 'Shift', 'Z'], '重做'],
