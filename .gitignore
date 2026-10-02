@@ -16,3 +16,6 @@ dist/
 *.tsbuildinfo
 dist-extension/
 storybook-static/
+
+# 数据库备份（deploy/backup.sh）
+backups/
