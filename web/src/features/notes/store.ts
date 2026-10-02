@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { create } from 'zustand'
 import { uuidv7 } from '../../lib/id'
 import { load, save } from '../../lib/storage'
@@ -7,6 +8,7 @@ import { surface } from '../../extension/surface'
 import { commitLocal, patchSnapshot } from '../../sync/merge'
 import type { Note, NotesData, RemoteNote } from '../../sync/model'
 import { emptyPersisted, migrateFromLocalStorage, type NotesRepo, openNotesRepo, type Persisted } from '../../storage/notesRepo'
+import { createSaveQueue } from '../../storage/saveQueue'
 import { docTitle, emptyDoc, isNoteDoc, markdownToDoc } from './doc'
 import { gridLayout } from './layout'
 
@@ -340,37 +342,41 @@ export function setSyncCursor(owner: string, cursor: number) {
 
 // ---------- 持久化 ----------
 
-/** 每个归属上次写入存储的内容：保存时与它比较，只写变化的行 */
-const persisted = new Map<string, Persisted | null>()
-let saveChain: Promise<void> = Promise.resolve()
 /** 收到其他标签页的通知时，本页还有没保存的改动：保存后再重新读取 */
 let reloadPending = false
 
 const snapshotOf = (s: Persisted): Persisted => ({ notes: s.notes, tombstones: s.tombstones, cursor: s.cursor })
-const samePersisted = (a: Persisted | null | undefined, b: Persisted) =>
-  !!a && a.notes === b.notes && a.tombstones === b.tombstones && a.cursor === b.cursor
 
-/** 排队保存（按顺序执行），保存后通知其他标签页 */
-function persistNow(owner: string, next: Persisted) {
-  const prev = persisted.get(owner) ?? null
-  if (samePersisted(prev, next)) return
-  persisted.set(owner, next)
-  saveChain = saveChain
-    .then(async () => {
-      await (await getRepo()).save(owner, prev, next)
-      // 本机数据第一次写入成功：再记下“已放过示例”，并删除最早的旧数据
-      if (owner === LOCAL_OWNER && !prev) {
-        save(SEEDED_KEY, true)
-        removeLegacy()
-      }
-      channel?.postMessage({ owner })
-      if (reloadPending) {
-        reloadPending = false
-        void reloadFromStorage()
-      }
+const SAVE_FAILED_TOAST = 'storage-save-failed'
+
+/** 按顺序保存，只写变化的行；失败时提示并自动重试（storage/saveQueue.ts） */
+const saves = createSaveQueue({
+  getRepo,
+  onSaved: (owner, prev) => {
+    // 本机数据第一次写入成功：再记下“已放过示例”，并删除最早的旧数据
+    if (owner === LOCAL_OWNER && !prev) {
+      save(SEEDED_KEY, true)
+      removeLegacy()
+    }
+    channel?.postMessage({ owner })
+    if (reloadPending) {
+      reloadPending = false
+      void reloadFromStorage()
+    }
+  },
+  onError: (err) => {
+    console.error('[storage] 保存失败', err)
+    toast.error('便利贴没能保存到本机，正在重试…', {
+      id: SAVE_FAILED_TOAST,
+      description: '可能是磁盘空间不足。在保存成功之前，请不要关闭页面。',
+      duration: Infinity,
     })
-    .catch((err) => console.error('[storage] 保存失败', err))
-}
+  },
+  onRecovered: () => {
+    toast.success('已保存', { id: SAVE_FAILED_TOAST, description: undefined, duration: 2000 })
+  },
+})
+const persistNow = saves.persist
 
 function removeLegacy() {
   try {
@@ -381,7 +387,7 @@ function removeLegacy() {
 }
 
 /** 等待所有排队中的保存完成 */
-export const flushSaves = () => saveChain
+export const flushSaves = () => saves.flush()
 
 useNotes.subscribe((s) => {
   if (!s.hydrated) return
@@ -395,7 +401,7 @@ export function hydrateNotes(): Promise<void> {
   hydrating ??= (async () => {
     const owner = useNotes.getState().owner
     const { data, saved } = await loadOwner(owner)
-    persisted.set(owner, saved)
+    saves.markStored(owner, saved)
     useNotes.setState({ ...data, hydrated: true })
   })()
   return hydrating
@@ -413,7 +419,7 @@ export async function switchOwner(owner: string, opts: { mergeLocal?: boolean } 
   await flushSaves()
 
   const { data, saved } = await loadOwner(owner)
-  persisted.set(owner, saved)
+  saves.markStored(owner, saved)
   const next: Persisted = { ...data, notes: [...data.notes] }
   if (opts.mergeLocal && owner !== LOCAL_OWNER) {
     const local = s.owner === LOCAL_OWNER ? snapshotOf(s) : ((await readPersisted(LOCAL_OWNER)) ?? emptyPersisted())
@@ -439,19 +445,19 @@ async function reloadFromStorage() {
   await flushSaves()
   const s = useNotes.getState()
   if (!s.hydrated) return
-  if (!samePersisted(persisted.get(s.owner), snapshotOf(s))) {
+  if (!saves.isStored(s.owner, snapshotOf(s))) {
     reloadPending = true
     return
   }
   const p = await readPersisted(s.owner)
   const cur = useNotes.getState()
   if (!p || cur.owner !== s.owner) return
-  if (!samePersisted(persisted.get(cur.owner), snapshotOf(cur))) {
+  if (!saves.isStored(cur.owner, snapshotOf(cur))) {
     // 读取期间本页又改了：保存后再读一次
     reloadPending = true
     return
   }
-  persisted.set(cur.owner, p)
+  saves.markStored(cur.owner, p)
   const has = (id: string | null) => id != null && p.notes.some((n) => n.id === id)
   useNotes.setState({
     ...p,

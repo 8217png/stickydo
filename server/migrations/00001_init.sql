@@ -3,7 +3,8 @@
 -- 可同步实体（boards、notes、todos、tags、item_tags）都带公共字段：
 --   created_at, updated_at, deleted_at  软删除，删除也能同步到其他设备
 --   version         取自 user_sync_seq，用户级全局递增，用于增量拉取
---   field_versions  每个字段最后一次被修改时的 version，用于字段级 LWW
+--   field_versions  预留给字段级合并（每个字段最后一次被修改时的 version）；
+--                   目前按整条记录比新旧，不使用这一列（docs/architecture.md §5.2）
 -- ID 由客户端生成（UUIDv7），所以不设默认值。
 
 -- +goose Up
