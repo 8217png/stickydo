@@ -15,7 +15,7 @@ const GROUPS: { title: string; items: [keys: string[], label: string][] }[] = [
     title: '选中的便利贴',
     items: [
       [['J', 'K'], '切换焦点（也可以用方向键）'],
-      [['E'], '编辑（也可以用 Enter 或双击）'],
+      [['E'], '编辑（也可以用 Enter、双击，或按住便利贴 2 秒）'],
       [['1', '–', '8'], '换颜色'],
       [['Delete'], '删除'],
       [['Esc'], '退出编辑 / 取消选中'],
