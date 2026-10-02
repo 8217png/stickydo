@@ -1,8 +1,16 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { ApiError, toApiError, type ApiClient, type Schemas } from '../api/client'
 import type { SessionState } from '../auth/session'
-import { applyPushResults, collectChanges, dropUntouchedSamples, mergePulled } from './merge'
-import type { LocalChange, NotesData, PushOutcome, RemoteNote } from './model'
+import {
+  applyBoardPushResults,
+  applyPushResults,
+  collectBoardChanges,
+  collectChanges,
+  dropUntouchedSamples,
+  hasPendingChanges,
+  mergePulledAll,
+} from './merge'
+import type { Board, LocalChange, Note, PushOutcome, RemoteBoard, RemoteChanges, RemoteNote, SyncData } from './model'
 
 /**
  * 同步引擎（docs/architecture.md §5.4）：
@@ -17,8 +25,8 @@ export interface SyncStatusState {
   lastSyncedAt: number | null
 }
 
-/** 同步引擎读写的本地便利贴状态 */
-export interface NotesSnapshot extends NotesData {
+/** 同步引擎读写的本地状态：便利贴和看板 */
+export interface NotesSnapshot extends SyncData {
   /** 当前数据属于谁：localOwner 或用户 id */
   owner: string
   cursor: number
@@ -35,7 +43,7 @@ export interface NotesSource {
   getState(): NotesSnapshot
   subscribe(listener: (s: NotesSnapshot, prev: NotesSnapshot) => void): () => void
   /** 应用同步结果；owner 不一致（同步期间换了账号）时丢弃。remoteChanges 用于更新撤销栈 */
-  apply(owner: string, update: (d: NotesData) => NotesData, remoteChanges?: RemoteNote[]): void
+  apply(owner: string, update: (d: SyncData) => SyncData, remoteChanges?: RemoteChanges): void
   setCursor(owner: string, cursor: number): void
   /** 切换数据归属（登录、退出、换账号）；mergeLocal：把本机数据并入新账号 */
   switchOwner(owner: string, opts?: { mergeLocal?: boolean }): Promise<void>
@@ -74,9 +82,9 @@ function toRemote(n: Schemas['Note']): RemoteNote {
     version: n.version,
     updatedAt: Date.parse(n.updated_at),
     deleted: n.deleted_at != null,
-    note: {
+    data: {
       id: n.id,
-      content: d.content as RemoteNote['note']['content'],
+      content: d.content as RemoteNote['data']['content'],
       color: d.color,
       x: d.pos_x,
       y: d.pos_y,
@@ -85,12 +93,34 @@ function toRemote(n: Schemas['Note']): RemoteNote {
       z: d.z_index,
       pinned: d.pinned,
       archived: d.archived,
+      boardId: d.board_id ?? null,
     },
   }
 }
 
-function toApiChange(c: LocalChange): Schemas['NoteChange'] {
-  const n = c.note
+function toRemoteBoard(b: Schemas['Board']): RemoteBoard {
+  return {
+    id: b.id,
+    version: b.version,
+    updatedAt: Date.parse(b.updated_at),
+    deleted: b.deleted_at != null,
+    data: { id: b.id, name: b.data.name, color: b.data.color, sortOrder: b.data.sort_order },
+  }
+}
+
+function toApiBoardChange(c: LocalChange<Board>): Schemas['BoardChange'] {
+  const b = c.data
+  return {
+    id: c.id,
+    base_version: c.baseVersion,
+    updated_at: new Date(c.updatedAt).toISOString(),
+    deleted: c.deleted,
+    data: b && { name: Array.from(b.name.trim() || '未命名').slice(0, 60).join(''), color: b.color, sort_order: b.sortOrder.slice(0, 64) },
+  }
+}
+
+function toApiChange(c: LocalChange<Note>): Schemas['NoteChange'] {
+  const n = c.data
   return {
     id: c.id,
     base_version: c.baseVersion,
@@ -106,6 +136,7 @@ function toApiChange(c: LocalChange): Schemas['NoteChange'] {
       z_index: Math.round(n.z),
       pinned: n.pinned ?? false,
       archived: n.archived ?? false,
+      board_id: n.boardId ?? null,
     },
   }
 }
@@ -144,9 +175,9 @@ export function createSyncEngine({
     return running
   }
 
-  function pendingChanges() {
+  function hasPending() {
     const s = notes.getState()
-    return collectChanges(s, s.editingId)
+    return hasPendingChanges(s, s.editingId)
   }
 
   async function syncOnce() {
@@ -161,33 +192,48 @@ export function createSyncEngine({
       for (;;) {
         const res = await api.GET('/sync/pull', { params: { query: { since: cursor, limit: 500 } } })
         if (!res.data) throw toApiError(res.error, res.response)
-        const remote = res.data.notes.map(toRemote)
-        notes.apply(owner, (d) => mergePulled(d, remote), remote)
+        const remote: RemoteChanges = { notes: res.data.notes.map(toRemote), boards: res.data.boards.map(toRemoteBoard) }
+        notes.apply(owner, (d) => mergePulledAll(d, remote), remote)
         cursor = res.data.server_version
         notes.setCursor(owner, cursor)
         if (!res.data.has_more) break
       }
       notes.apply(owner, dropUntouchedSamples)
 
-      // 2. 推送本地改动
-      const changes = pendingChanges()
+      // 2. 推送本地改动：先推看板，便利贴才能引用新建的看板
+      const s = notes.getState()
+      const boardChanges = collectBoardChanges(s)
+      const changes = collectChanges(s, s.editingId)
+      for (let i = 0; i < boardChanges.length; i += PUSH_BATCH) {
+        if (notes.getState().owner !== owner) return
+        const batch = boardChanges.slice(i, i + PUSH_BATCH)
+        const res = await api.POST('/sync/push', { body: { notes: [], boards: batch.map(toApiBoardChange) } })
+        if (!res.data) throw toApiError(res.error, res.response)
+        const outcomes: PushOutcome<Board>[] = res.data.board_results.map((r) => ({
+          id: r.id,
+          status: r.status,
+          remote: r.board ? toRemoteBoard(r.board) : undefined,
+        }))
+        const stale = outcomes.filter((o) => o.status === 'stale' && o.remote).map((o) => o.remote!)
+        notes.apply(owner, (d) => ({ ...d, ...applyBoardPushResults(d, batch, outcomes) }), { notes: [], boards: stale })
+      }
       for (let i = 0; i < changes.length; i += PUSH_BATCH) {
         if (notes.getState().owner !== owner) return
         const batch = changes.slice(i, i + PUSH_BATCH)
         const res = await api.POST('/sync/push', { body: { notes: batch.map(toApiChange) } })
         if (!res.data) throw toApiError(res.error, res.response)
-        const outcomes: PushOutcome[] = res.data.results.map((r) => ({
+        const outcomes: PushOutcome<Note>[] = res.data.results.map((r) => ({
           id: r.id,
           status: r.status,
           remote: r.note ? toRemote(r.note) : undefined,
         }))
         // 服务端更新（stale）的记录也要同步到撤销栈
-        const staleRemote = outcomes.filter((o) => o.status === 'stale' && o.remote).map((o) => o.remote!)
-        notes.apply(owner, (d) => applyPushResults(d, batch, outcomes), staleRemote)
+        const stale = outcomes.filter((o) => o.status === 'stale' && o.remote).map((o) => o.remote!)
+        notes.apply(owner, (d) => ({ ...d, ...applyPushResults(d, batch, outcomes) }), { notes: stale, boards: [] })
       }
 
       if (notes.getState().owner !== owner) return
-      setStatus({ status: pendingChanges().length ? 'pending' : 'synced', lastSyncedAt: Date.now() })
+      setStatus({ status: hasPending() ? 'pending' : 'synced', lastSyncedAt: Date.now() })
     } catch (err) {
       if (!session.getState().user) {
         setStatus({ status: 'local' })
@@ -223,7 +269,7 @@ export function createSyncEngine({
     // 切换期间登录状态又变了：以最新的为准，由下一次 followSession 处理
     if ((session.getState().user?.id ?? null) !== (user?.id ?? null)) return
     if (user) {
-      if (status.getState().status === 'local') setStatus({ status: pendingChanges().length ? 'pending' : 'syncing' })
+      if (status.getState().status === 'local') setStatus({ status: hasPending() ? 'pending' : 'syncing' })
       void syncNow()
     } else {
       setStatus({ status: 'local', lastSyncedAt: null })
@@ -252,9 +298,14 @@ export function createSyncEngine({
     // 本地编辑（包括结束编辑一张便利贴）后安排同步
     notes.subscribe((s, prev) => {
       if (!session.getState().user) return
-      const edited = s.notes !== prev.notes || s.tombstones !== prev.tombstones || s.editingId !== prev.editingId
+      const edited =
+        s.notes !== prev.notes ||
+        s.tombstones !== prev.tombstones ||
+        s.boards !== prev.boards ||
+        s.boardTombstones !== prev.boardTombstones ||
+        s.editingId !== prev.editingId
       if (!edited || s.owner !== prev.owner) return
-      if (collectChanges(s, s.editingId).length === 0) return
+      if (!hasPendingChanges(s, s.editingId)) return
       if (status.getState().status === 'synced') setStatus({ status: 'pending' })
       scheduleAfterEdit()
     })

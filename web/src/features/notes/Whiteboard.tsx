@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { currentNoteSize, useNotes } from './store'
+import { currentNoteSize, notesOnBoard, useNotes } from './store'
 import { StickyNote } from './StickyNote'
 import { setBoardViewport } from './viewport'
 
 const CANVAS_MARGIN = 480
 
-export function Whiteboard() {
-  const notes = useNotes((s) => s.notes)
+/** 一块白板：收件箱（boardId 为 null）或某个看板 */
+export function Whiteboard({ boardId }: { boardId: string | null }) {
+  const allNotes = useNotes((s) => s.notes)
+  const boards = useNotes((s) => s.boards)
+  const notes = useMemo(() => notesOnBoard({ notes: allNotes, boards }, boardId), [allNotes, boards, boardId])
   const hydrated = useNotes((s) => s.hydrated)
   const selectedId = useNotes((s) => s.selectedId)
   const editingId = useNotes((s) => s.editingId)
@@ -40,6 +43,12 @@ export function Whiteboard() {
     })
     return () => setBoardViewport(null)
   }, [])
+
+  // 换到另一块白板：回到左上角，取消选中
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ left: 0, top: 0 })
+    useNotes.getState().select(null)
+  }, [boardId])
 
   const toCanvas = (clientX: number, clientY: number) => {
     const r = canvasRef.current!.getBoundingClientRect()
@@ -84,12 +93,13 @@ export function Whiteboard() {
       </div>
 
       {/* 本地数据读出来之前不显示空状态，避免一闪而过 */}
-      <AnimatePresence>{hydrated && notes.length === 0 && <EmptyState />}</AnimatePresence>
+      <AnimatePresence>{hydrated && notes.length === 0 && <EmptyState key={boardId ?? 'inbox'} boardId={boardId} />}</AnimatePresence>
     </div>
   )
 }
 
-function EmptyState() {
+function EmptyState({ boardId }: { boardId: string | null }) {
+  const board = useNotes((s) => s.boards.find((b) => b.id === boardId))
   return (
     <motion.div
       className="pointer-events-none absolute inset-0 grid place-items-center"
@@ -105,7 +115,9 @@ function EmptyState() {
           <path d="M108 8l3 6M118 18l-6 2M114 10l-4 4" stroke="var(--ink-faint)" strokeWidth="2" strokeLinecap="round" />
         </svg>
         <div>
-          <p className="text-[15px] font-medium text-ink">双击任意位置，贴上第一张便利贴</p>
+          <p className="text-[15px] font-medium text-ink">
+            {board ? `「${board.name}」还是空的，双击任意位置贴上第一张` : '双击任意位置，贴上第一张便利贴'}
+          </p>
           <p className="mt-1.5 text-[13px] text-ink-muted">
             或者按 <kbd>N</kbd> 新建，<kbd>Ctrl</kbd> <kbd>V</kbd> 粘贴文字
           </p>

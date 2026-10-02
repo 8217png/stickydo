@@ -430,3 +430,12 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- 侧边栏（M4） ---------- */
+
+/* 便利贴拖到看板上方时高亮 */
+[data-drop-board][data-drop-active] .sidebar-item {
+  background: color-mix(in srgb, var(--focus-ring) 16%, transparent);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--focus-ring);
+}

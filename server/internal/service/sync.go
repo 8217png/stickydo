@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,7 +17,7 @@ import (
 	"github.com/8217png/stickydo/server/internal/repo"
 )
 
-// Sync 实现“本地优先、按记录比新旧”的同步（docs/architecture.md §5）。M2 先同步便利贴。
+// Sync 实现“本地优先、按记录比新旧”的同步（docs/architecture.md §5）：便利贴和看板。
 type Sync struct {
 	pool *pgxpool.Pool
 	q    *repo.Queries
@@ -41,6 +42,29 @@ type NoteData struct {
 	ZIndex   int32
 	Pinned   bool
 	Archived bool
+	// 所在看板；nil 表示收件箱
+	BoardID *uuid.UUID
+}
+
+type BoardData struct {
+	Name      string
+	Color     string
+	SortOrder string
+}
+
+type BoardChange struct {
+	ID          uuid.UUID
+	BaseVersion int64
+	UpdatedAt   time.Time
+	Deleted     bool
+	Data        *BoardData
+}
+
+type BoardPushResult struct {
+	ID     uuid.UUID
+	Status PushStatus
+	Board  *repo.Board
+	Reason string
 }
 
 type NoteChange struct {
@@ -69,33 +93,42 @@ type PushResult struct {
 
 type PullResult struct {
 	Notes         []repo.Note
+	Boards        []repo.Board
 	ServerVersion int64
 	HasMore       bool
 }
 
-// Pull 返回 version > since 的便利贴（含已删除的），按 version 递增。
+// Pull 返回 version > since 的便利贴和看板（含已删除的），按 version 递增。
+// 便利贴按 limit 分页；看板很少，每页带上同一版本区间内的全部看板。
 func (s *Sync) Pull(ctx context.Context, p auth.Principal, since int64, limit int) (PullResult, error) {
 	upto, err := s.q.GetSyncSeq(ctx, p.UserID)
 	if err != nil {
 		return PullResult{}, err
 	}
 	if since >= upto {
-		return PullResult{Notes: []repo.Note{}, ServerVersion: upto}, nil
+		return PullResult{Notes: []repo.Note{}, Boards: []repo.Board{}, ServerVersion: upto}, nil
 	}
 	notes, err := s.q.PullNotes(ctx, repo.PullNotesParams{UserID: p.UserID, Since: since, Upto: upto, MaxRows: int32(limit)})
 	if err != nil {
 		return PullResult{}, err
 	}
+	res := PullResult{Notes: notes, ServerVersion: upto}
 	if len(notes) == limit && notes[len(notes)-1].Version < upto {
-		return PullResult{Notes: notes, ServerVersion: notes[len(notes)-1].Version, HasMore: true}, nil
+		res.ServerVersion = notes[len(notes)-1].Version
+		res.HasMore = true
 	}
-	return PullResult{Notes: notes, ServerVersion: upto}, nil
+	res.Boards, err = s.q.PullBoards(ctx, repo.PullBoardsParams{UserID: p.UserID, Since: since, Upto: res.ServerVersion})
+	if err != nil {
+		return PullResult{}, err
+	}
+	return res, nil
 }
 
 // Push 逐条比较新旧并写入。整批在一个事务里：先锁住用户的版本序列，
-// 同一用户的推送因此串行，版本号按提交顺序递增。
-func (s *Sync) Push(ctx context.Context, p auth.Principal, changes []NoteChange) ([]PushResult, int64, error) {
+// 同一用户的推送因此串行，版本号按提交顺序递增。看板先处理，便利贴可以引用同一批里新建的看板。
+func (s *Sync) Push(ctx context.Context, p auth.Principal, changes []NoteChange, boards []BoardChange) ([]PushResult, []BoardPushResult, int64, error) {
 	results := make([]PushResult, 0, len(changes))
+	boardResults := make([]BoardPushResult, 0, len(boards))
 	var serverVersion int64
 	now := s.Now()
 
@@ -106,6 +139,20 @@ func (s *Sync) Push(ctx context.Context, p auth.Principal, changes []NoteChange)
 			return err
 		}
 		next := func() int64 { seq++; return seq }
+
+		seenBoards := make(map[uuid.UUID]bool, len(boards))
+		for _, c := range boards {
+			if seenBoards[c.ID] {
+				boardResults = append(boardResults, BoardPushResult{ID: c.ID, Status: PushInvalid, Reason: "同一批里重复的 id"})
+				continue
+			}
+			seenBoards[c.ID] = true
+			r, err := s.pushBoard(ctx, q, p, c, now, next)
+			if err != nil {
+				return err
+			}
+			boardResults = append(boardResults, r)
+		}
 
 		seen := make(map[uuid.UUID]bool, len(changes))
 		for _, c := range changes {
@@ -124,9 +171,9 @@ func (s *Sync) Push(ctx context.Context, p auth.Principal, changes []NoteChange)
 		return q.SetSyncSeq(ctx, repo.SetSyncSeqParams{UserID: p.UserID, LastVersion: seq})
 	})
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
-	return results, serverVersion, nil
+	return results, boardResults, serverVersion, nil
 }
 
 func (s *Sync) pushOne(ctx context.Context, q *repo.Queries, p auth.Principal, c NoteChange, now time.Time, next func() int64) (PushResult, error) {
@@ -141,6 +188,18 @@ func (s *Sync) pushOne(ctx context.Context, q *repo.Queries, p auth.Principal, c
 		edited = now
 	}
 
+	board := uuid.NullUUID{}
+	if !c.Deleted && c.Data.BoardID != nil {
+		// 看板不存在（或属于别人）时放进收件箱，便利贴照常保存
+		ok, err := q.BoardOwnedBy(ctx, repo.BoardOwnedByParams{ID: *c.Data.BoardID, UserID: p.UserID})
+		if err != nil {
+			return PushResult{}, err
+		}
+		if ok {
+			board = uuid.NullUUID{UUID: *c.Data.BoardID, Valid: true}
+		}
+	}
+
 	row, err := q.GetNoteForUpdate(ctx, c.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if c.Deleted {
@@ -151,7 +210,7 @@ func (s *Sync) pushOne(ctx context.Context, q *repo.Queries, p auth.Principal, c
 		ins, err := q.InsertNote(ctx, repo.InsertNoteParams{
 			ID: c.ID, UserID: p.UserID, Content: d.Content, Color: d.Color, Pinned: d.Pinned, Archived: d.Archived,
 			PosX: d.PosX, PosY: d.PosY, Width: d.Width, Height: d.Height, ZIndex: d.ZIndex,
-			UpdatedAt: edited, Version: next(),
+			UpdatedAt: edited, Version: next(), BoardID: board,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			// 并发插入了同一个 id（只可能是别的用户）：不覆盖
@@ -187,12 +246,84 @@ func (s *Sync) pushOne(ctx context.Context, q *repo.Queries, p auth.Principal, c
 	upd, err := q.UpdateNote(ctx, repo.UpdateNoteParams{
 		ID: c.ID, Content: d.Content, Color: d.Color, Pinned: d.Pinned, Archived: d.Archived,
 		PosX: d.PosX, PosY: d.PosY, Width: d.Width, Height: d.Height, ZIndex: d.ZIndex,
-		UpdatedAt: edited, DeletedAt: nil, Version: next(),
+		UpdatedAt: edited, DeletedAt: nil, Version: next(), BoardID: board,
 	})
 	if err != nil {
 		return PushResult{}, err
 	}
 	return PushResult{ID: c.ID, Status: PushApplied, Note: &upd}, nil
+}
+
+func (s *Sync) pushBoard(ctx context.Context, q *repo.Queries, p auth.Principal, c BoardChange, now time.Time, next func() int64) (BoardPushResult, error) {
+	if !c.Deleted {
+		if reason := validateBoard(c.Data); reason != "" {
+			return BoardPushResult{ID: c.ID, Status: PushInvalid, Reason: reason}, nil
+		}
+	}
+	edited := c.UpdatedAt
+	if edited.After(now) {
+		edited = now
+	}
+
+	row, err := q.GetBoardForUpdate(ctx, c.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if c.Deleted {
+			return BoardPushResult{ID: c.ID, Status: PushApplied}, nil
+		}
+		d := c.Data
+		ins, err := q.InsertBoard(ctx, repo.InsertBoardParams{
+			ID: c.ID, UserID: p.UserID, Name: d.Name, Color: d.Color, SortOrder: d.SortOrder,
+			UpdatedAt: edited, Version: next(),
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return BoardPushResult{ID: c.ID, Status: PushInvalid, Reason: "id 已被占用"}, nil
+		}
+		if err != nil {
+			return BoardPushResult{}, err
+		}
+		return BoardPushResult{ID: c.ID, Status: PushApplied, Board: &ins}, nil
+	}
+	if err != nil {
+		return BoardPushResult{}, err
+	}
+	if row.UserID != p.UserID {
+		return BoardPushResult{ID: c.ID, Status: PushInvalid, Reason: "id 已被占用"}, nil
+	}
+	if !(c.BaseVersion == row.Version || edited.After(row.UpdatedAt)) {
+		return BoardPushResult{ID: c.ID, Status: PushStale, Board: &row}, nil
+	}
+	if c.Deleted {
+		del, err := q.MarkBoardDeleted(ctx, repo.MarkBoardDeletedParams{ID: c.ID, UpdatedAt: edited, Version: next()})
+		if err != nil {
+			return BoardPushResult{}, err
+		}
+		return BoardPushResult{ID: c.ID, Status: PushApplied, Board: &del}, nil
+	}
+	d := c.Data
+	upd, err := q.UpdateBoard(ctx, repo.UpdateBoardParams{
+		ID: c.ID, Name: d.Name, Color: d.Color, SortOrder: d.SortOrder, UpdatedAt: edited, Version: next(),
+	})
+	if err != nil {
+		return BoardPushResult{}, err
+	}
+	return BoardPushResult{ID: c.ID, Status: PushApplied, Board: &upd}, nil
+}
+
+// validateBoard 补充 OpenAPI 管不到的检查
+func validateBoard(d *BoardData) string {
+	if d == nil {
+		return "缺少 data"
+	}
+	if strings.TrimSpace(d.Name) == "" {
+		return "看板名称不能为空"
+	}
+	if strings.ContainsRune(d.Name, 0) || strings.ContainsRune(d.SortOrder, 0) {
+		return "包含不支持的字符"
+	}
+	if !noteColors[d.Color] {
+		return "不支持的颜色"
+	}
+	return ""
 }
 
 var noteColors = map[string]bool{

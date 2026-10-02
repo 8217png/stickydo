@@ -1,11 +1,11 @@
-import type { NotesData } from '../sync/model'
+import type { SyncData } from '../sync/model'
 
 /**
  * 便利贴本地存储的接口（docs/architecture.md §5.5）：每个端各自实现，
  * Web 用 IndexedDB（web/src/storage/notesRepo.ts），移动端用 SQLite。
  */
 
-export interface Persisted extends NotesData {
+export interface Persisted extends SyncData {
   /** 同步游标：上次拉取到的服务端版本 */
   cursor: number
 }
@@ -19,4 +19,4 @@ export interface NotesRepo {
   save(owner: string, prev: Persisted | null, next: Persisted): Promise<void>
 }
 
-export const emptyPersisted = (): Persisted => ({ notes: [], tombstones: [], cursor: 0 })
+export const emptyPersisted = (): Persisted => ({ notes: [], tombstones: [], boards: [], boardTombstones: [], cursor: 0 })

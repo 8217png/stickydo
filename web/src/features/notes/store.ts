@@ -6,12 +6,23 @@ import { type NoteSizeKey, useSettings } from '../settings'
 import { currentPopupSize } from '../../extension/popupSize'
 import { surface } from '../../extension/surface'
 import { createSaveQueue, emptyPersisted, type NotesRepo, type Persisted } from '@stickydo/core/storage'
-import { commitLocal, type Note, type NotesData, patchSnapshot, type RemoteNote } from '@stickydo/core/sync'
+import {
+  type Board,
+  commitBoards,
+  commitLocal,
+  type Note,
+  patchStep,
+  type RemoteChanges,
+  type Snapshot,
+  type SyncData,
+} from '@stickydo/core/sync'
+import type { NoteColor } from '@stickydo/core/design'
+import { activeBoardId } from '../view'
 import { migrateFromLocalStorage, openNotesRepo } from '../../storage/notesRepo'
 import { docTitle, emptyDoc, isNoteDoc, markdownToDoc } from './doc'
 import { gridLayout } from './layout'
 
-export type { Note }
+export type { Board, Note, Snapshot }
 
 export const NOTE_SIZES = [
   { key: 's', label: '小', w: 160, h: 140 },
@@ -122,6 +133,7 @@ function normalizeNote(input: unknown): Note | null {
     z: Number(raw.z) || 0,
     pinned: raw.pinned === true,
     archived: raw.archived === true,
+    boardId: typeof raw.boardId === 'string' ? raw.boardId : null,
     version: legacy ? 0 : (raw.version as number),
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
     // 旧数据从未同步过，登录后需要上传
@@ -168,13 +180,13 @@ interface NotesState extends Persisted {
   owner: string
   /** 本地数据是否已经读出来（IndexedDB 是异步的） */
   hydrated: boolean
-  past: Note[][]
-  future: Note[][]
+  past: Snapshot[]
+  future: Snapshot[]
   selectedId: string | null
   editingId: string | null
 
   /** 把当前状态压入撤销栈，在一次可撤销的修改之前调用 */
-  checkpoint: (snapshot?: Note[]) => void
+  checkpoint: (snapshot?: Snapshot) => void
   create: (init: Partial<Note> & Pick<Note, 'x' | 'y'>) => string
   update: (id: string, patch: Partial<Note>, opts?: { record?: boolean }) => void
   remove: (id: string, opts?: { record?: boolean }) => Note | undefined
@@ -188,6 +200,16 @@ interface NotesState extends Persisted {
   redo: () => void
   select: (id: string | null) => void
   setEditing: (id: string | null) => void
+
+  /** 新建看板，返回 id */
+  createBoard: (name: string, color?: NoteColor) => string
+  updateBoard: (id: string, patch: Partial<Pick<Board, 'name' | 'color' | 'sortOrder'>>) => void
+  /** 删除看板和其中的便利贴，整体算一步撤销；返回被删除的内容，用于提示条上的撤销 */
+  deleteBoard: (id: string) => { board: Board; notes: Note[] } | undefined
+  /** 撤销删除看板：把看板和便利贴放回去 */
+  restoreBoard: (board: Board, notes: Note[]) => void
+  /** 把便利贴移到另一个看板（null 为收件箱） */
+  moveToBoard: (id: string, boardId: string | null) => void
 }
 
 const maxZ = (notes: Note[]) => notes.reduce((m, n) => Math.max(m, n.z), 0)
@@ -202,9 +224,18 @@ function storedUserId(): string | null {
 const initialOwner = surface === 'web' ? (storedUserId() ?? LOCAL_OWNER) : LOCAL_OWNER
 
 export const useNotes = create<NotesState>()((set, get) => {
-  /** 所有本地编辑都经过这里：标记改动、记录墓碑（sync/merge.ts commitLocal） */
-  const edit = (next: Note[], extra: Partial<NotesState> = {}) =>
-    set((s) => ({ ...commitLocal(s, next, Date.now()), ...extra }))
+  /** 所有本地编辑都经过这里：标记改动、记录墓碑（sync/merge.ts commitLocal / commitBoards） */
+  const edit = (next: Note[] | Partial<Snapshot>, extra: Partial<NotesState> = {}) =>
+    set((s) => {
+      const n = Array.isArray(next) ? { notes: next } : next
+      const now = Date.now()
+      return {
+        ...(n.notes && n.notes !== s.notes ? commitLocal(s, n.notes, now) : {}),
+        ...(n.boards && n.boards !== s.boards ? commitBoards(s, n.boards, now) : {}),
+        ...extra,
+      }
+    })
+  const snap = (s: NotesState): Snapshot => ({ notes: s.notes, boards: s.boards })
 
   return {
     ...emptyPersisted(),
@@ -217,12 +248,13 @@ export const useNotes = create<NotesState>()((set, get) => {
 
     checkpoint: (snapshot) =>
       set((s) => ({
-        past: [...s.past, snapshot ?? s.notes].slice(-HISTORY_LIMIT),
+        past: [...s.past, snapshot ?? snap(s)].slice(-HISTORY_LIMIT),
         future: [],
       })),
 
     create: (init) => {
       const s = get()
+      const board = activeBoardId()
       const note: Note = {
         id: uuidv7(),
         content: emptyDoc(),
@@ -231,6 +263,7 @@ export const useNotes = create<NotesState>()((set, get) => {
         version: 0,
         updatedAt: Date.now(),
         dirty: true,
+        boardId: board && s.boards.some((b) => b.id === board) ? board : null,
         ...init,
         z: maxZ(s.notes) + 1,
       }
@@ -275,7 +308,7 @@ export const useNotes = create<NotesState>()((set, get) => {
       const s = get()
       const last = s.past.at(-1)
       // 如果撤销栈顶就是“新建之前”的快照，一并去掉，这次新建就像没发生过
-      const past = last && !last.some((n) => n.id === id) ? s.past.slice(0, -1) : s.past
+      const past = last && !last.notes.some((n) => n.id === id) ? s.past.slice(0, -1) : s.past
       edit(
         s.notes.filter((n) => n.id !== id),
         {
@@ -299,25 +332,117 @@ export const useNotes = create<NotesState>()((set, get) => {
       const s = get()
       const prev = s.past.at(-1)
       if (!prev) return
-      edit(prev, { past: s.past.slice(0, -1), future: [s.notes, ...s.future], editingId: null })
+      edit(prev, { past: s.past.slice(0, -1), future: [snap(s), ...s.future], editingId: null })
     },
 
     redo: () => {
       const s = get()
       const next = s.future[0]
       if (!next) return
-      edit(next, { past: [...s.past, s.notes].slice(-HISTORY_LIMIT), future: s.future.slice(1), editingId: null })
+      edit(next, { past: [...s.past, snap(s)].slice(-HISTORY_LIMIT), future: s.future.slice(1), editingId: null })
     },
 
     select: (id) => set({ selectedId: id }),
     setEditing: (id) => set({ editingId: id, ...(id ? { selectedId: id } : {}) }),
+
+    createBoard: (name, color = 'sky') => {
+      const s = get()
+      const board: Board = {
+        id: uuidv7(),
+        name: name.trim() || '未命名看板',
+        color,
+        sortOrder: nextSortOrder(s.boards),
+        version: 0,
+        updatedAt: Date.now(),
+        dirty: true,
+      }
+      s.checkpoint()
+      edit({ boards: [...s.boards, board] })
+      return board.id
+    },
+
+    updateBoard: (id, patch) => {
+      const s = get()
+      const board = s.boards.find((b) => b.id === id)
+      if (!board || Object.entries(patch).every(([k, v]) => board[k as keyof Board] === v)) return
+      s.checkpoint()
+      edit({ boards: s.boards.map((b) => (b.id === id ? { ...b, ...patch } : b)) })
+    },
+
+    deleteBoard: (id) => {
+      const s = get()
+      const board = s.boards.find((b) => b.id === id)
+      if (!board) return undefined
+      const ids = new Set(s.boards.map((b) => b.id))
+      const inBoard = s.notes.filter((n) => noteBoardId(n, ids) === id)
+      s.checkpoint()
+      edit(
+        { boards: s.boards.filter((b) => b.id !== id), notes: s.notes.filter((n) => !inBoard.includes(n)) },
+        {
+          selectedId: inBoard.some((n) => n.id === s.selectedId) ? null : s.selectedId,
+          editingId: inBoard.some((n) => n.id === s.editingId) ? null : s.editingId,
+        },
+      )
+      return { board, notes: inBoard }
+    },
+
+    restoreBoard: (board, notes) => {
+      const s = get()
+      if (s.boards.some((b) => b.id === board.id)) return
+      const existing = new Set(s.notes.map((n) => n.id))
+      s.checkpoint()
+      edit({ boards: [...s.boards, board], notes: [...s.notes, ...notes.filter((n) => !existing.has(n.id))] })
+    },
+
+    moveToBoard: (id, boardId) => {
+      const s = get()
+      const note = s.notes.find((n) => n.id === id)
+      if (!note || (note.boardId ?? null) === boardId) return
+      s.checkpoint()
+      // 移过去后放在最上层
+      edit(s.notes.map((n) => (n.id === id ? { ...n, boardId, z: maxZ(s.notes) + 1 } : n)), {
+        selectedId: s.selectedId === id ? null : s.selectedId,
+      })
+    },
   }
 })
+
+/** 看板排序：新看板排在最后。分数索引的简化版，按字节序比较 */
+function nextSortOrder(boards: Board[]): string {
+  const last = boards.reduce((m, b) => (b.sortOrder > m ? b.sortOrder : m), '')
+  const key = Date.now().toString(36).padStart(10, '0')
+  return key > last ? key : `${last}0`
+}
+
+/** 便利贴实际所在的看板：看板已不存在（例如在别的设备上删掉了）时算在收件箱 */
+export function noteBoardId(n: Note, boardIds: Set<string>): string | null {
+  return n.boardId && boardIds.has(n.boardId) ? n.boardId : null
+}
+
+/** 看板按排序键排列 */
+export const sortedBoards = (boards: Board[]) =>
+  [...boards].sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : a.id < b.id ? -1 : 1))
+
+/** 当前白板上的便利贴 */
+export function notesOnBoard(s: Pick<SyncData, 'notes' | 'boards'>, boardId: string | null): Note[] {
+  const ids = new Set(s.boards.map((b) => b.id))
+  const target = boardId && ids.has(boardId) ? boardId : null
+  return s.notes.filter((n) => noteBoardId(n, ids) === target)
+}
+
+/** 当前显示的白板上的便利贴（快捷键、自动排列、找空位用） */
+export const visibleNotes = () => notesOnBoard(useNotes.getState(), activeBoardId())
+
+/** 当前状态作为撤销的一步 */
+export const snapshotNow = (): Snapshot => {
+  const s = useNotes.getState()
+  return { notes: s.notes, boards: s.boards }
+}
 
 // ---------- 同步引擎调用的接口（不经过 commitLocal，不算本地编辑） ----------
 
 /** 应用同步结果。owner 不一致（同步期间换了账号）时丢弃。 */
-export function applySyncResult(owner: string, update: (d: NotesData) => NotesData, remoteChanges: RemoteNote[] = []) {
+export function applySyncResult(owner: string, update: (d: SyncData) => SyncData, remote?: RemoteChanges) {
   useNotes.setState((s) => {
     if (s.owner !== owner) return s
     const next = update(s)
@@ -325,9 +450,11 @@ export function applySyncResult(owner: string, update: (d: NotesData) => NotesDa
     return {
       notes: next.notes,
       tombstones: next.tombstones,
+      boards: next.boards,
+      boardTombstones: next.boardTombstones,
       // 撤销栈跟上服务端，撤销只撤回自己的操作
-      ...(remoteChanges.length
-        ? { past: s.past.map((p) => patchSnapshot(p, remoteChanges)), future: s.future.map((f) => patchSnapshot(f, remoteChanges)) }
+      ...(remote && (remote.notes.length || remote.boards.length)
+        ? { past: s.past.map((p) => patchStep(p, remote)), future: s.future.map((f) => patchStep(f, remote)) }
         : {}),
       selectedId: has(s.selectedId) ? s.selectedId : null,
       editingId: has(s.editingId) ? s.editingId : null,
@@ -344,7 +471,13 @@ export function setSyncCursor(owner: string, cursor: number) {
 /** 收到其他标签页的通知时，本页还有没保存的改动：保存后再重新读取 */
 let reloadPending = false
 
-const snapshotOf = (s: Persisted): Persisted => ({ notes: s.notes, tombstones: s.tombstones, cursor: s.cursor })
+const snapshotOf = (s: Persisted): Persisted => ({
+  notes: s.notes,
+  tombstones: s.tombstones,
+  boards: s.boards,
+  boardTombstones: s.boardTombstones,
+  cursor: s.cursor,
+})
 
 const SAVE_FAILED_TOAST = 'storage-save-failed'
 
@@ -419,7 +552,7 @@ export async function switchOwner(owner: string, opts: { mergeLocal?: boolean } 
 
   const { data, saved } = await loadOwner(owner)
   saves.markStored(owner, saved)
-  const next: Persisted = { ...data, notes: [...data.notes] }
+  const next: Persisted = { ...data, notes: [...data.notes], boards: [...data.boards] }
   if (opts.mergeLocal && owner !== LOCAL_OWNER) {
     const local = s.owner === LOCAL_OWNER ? snapshotOf(s) : ((await readPersisted(LOCAL_OWNER)) ?? emptyPersisted())
     const existing = new Set(next.notes.map((n) => n.id))
@@ -430,7 +563,11 @@ export async function switchOwner(owner: string, opts: { mergeLocal?: boolean } 
       // 本机的便利贴对这个账号来说都是新的：版本 0，等待上传
       next.notes.push({ ...n, z: n.z + offset, version: 0, dirty: true, updatedAt: Math.max(n.updatedAt, now) })
     }
-    if (local.notes.length) persistNow(LOCAL_OWNER, emptyPersisted())
+    const existingBoards = new Set(next.boards.map((b) => b.id))
+    for (const b of local.boards) {
+      if (!existingBoards.has(b.id)) next.boards.push({ ...b, version: 0, dirty: true, updatedAt: Math.max(b.updatedAt, now) })
+    }
+    if (local.notes.length || local.boards.length) persistNow(LOCAL_OWNER, emptyPersisted())
   }
   useNotes.setState({ ...next, owner, hydrated: true, past: [], future: [], selectedId: null, editingId: null })
 }

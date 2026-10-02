@@ -111,11 +111,22 @@ export function AccountMenu() {
               </button>
             </div>
             <div className="mx-1 h-px bg-chrome-border" />
+            <Link
+              to="/account"
+              role="menuitem"
+              className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-ink transition-colors hover:bg-chrome-hover focus-visible:bg-chrome-hover focus-visible:outline-none"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                <path d="M5.5 7V5a2.5 2.5 0 015 0v2" />
+              </svg>
+              账号与设备
+            </Link>
             <button
               type="button"
               role="menuitem"
               autoFocus
-              className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-ink transition-colors hover:bg-chrome-hover focus-visible:bg-chrome-hover focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-ink transition-colors hover:bg-chrome-hover focus-visible:bg-chrome-hover focus-visible:outline-none"
               onClick={async () => {
                 setOpen(false)
                 await useSession.getState().logout()

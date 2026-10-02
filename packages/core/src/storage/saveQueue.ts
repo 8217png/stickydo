@@ -20,7 +20,12 @@ export interface SaveQueueOptions {
 }
 
 export const samePersisted = (a: Persisted | null | undefined, b: Persisted) =>
-  !!a && a.notes === b.notes && a.tombstones === b.tombstones && a.cursor === b.cursor
+  !!a &&
+  a.notes === b.notes &&
+  a.tombstones === b.tombstones &&
+  a.boards === b.boards &&
+  a.boardTombstones === b.boardTombstones &&
+  a.cursor === b.cursor
 
 export function createSaveQueue({ getRepo, onSaved, onError, onRecovered, retryMs = 3000 }: SaveQueueOptions) {
   /** 每个归属确实写入了存储的内容 */

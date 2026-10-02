@@ -51,7 +51,7 @@
 | API 客户端 | `openapi-fetch` + `openapi-typescript` 生成的类型 |
 | 路由 | React Router |
 | 服务端状态 | TanStack Query |
-| 本地状态与撤销栈 | Zustand（撤销通过中间件实现） |
+| 本地状态与撤销栈 | Zustand（撤销栈每一步是当时的全部便利贴和看板，同步带来的变化会同时应用到撤销栈上） |
 | 本地存储 | Dexie（IndexedDB）：每张便利贴一行，只写变化的行；不可用时退回 localStorage |
 | UI 基础 | Tailwind + shadcn/ui（Radix UI） |
 | 动效 | Motion（原 Framer Motion） |
@@ -119,6 +119,13 @@ item_tags    (id, user_id, tag_id, item_type, item_id,   -- 关联本身也是�
 
 - `item_tags` 同样带公共字段：打标签就是 upsert 一条关联，去标签就是软删除这条关联，因此可以和其他实体一样增量同步。`id` 由客户端生成（UUIDv7）；如果两台设备离线时给同一条内容打了同一个标签，服务端按唯一键合并为一条。
 
+### 看板（M4 起）
+
+- 便利贴的 `board_id` 为空时在**收件箱**；看板只有名称、颜色和排序键（`sort_order`，按字节序比较，新看板排在最后）。
+- 便利贴引用的看板不存在（例如在别的设备上删掉了，或者看板还没同步过来）时，**按收件箱显示**；服务端收到引用了不存在或别人看板的便利贴，同样存为收件箱，不拒绝。
+- **删除看板会连同其中的便利贴一起删除**（客户端同时给看板和这些便利贴留墓碑，整体算一步撤销，提示条可以恢复）。服务端只软删除看板本身，便利贴的删除照常随推送同步。
+- 移动便利贴就是改它的 `board_id`，和改颜色、位置一样按整条记录比新旧。
+
 ### 待办的存储（M3 起）
 
 目前待办**就是便利贴正文里的待办项**（Tiptap 的 `taskItem` 节点），跟着便利贴一起保存、一起同步，不单独建表；快速记录一条待办，就是新建一张只有这一条待办项的便利贴。时间、优先级、标签写在待办项的属性里：
@@ -156,7 +163,7 @@ item_tags    (id, user_id, tag_id, item_type, item_id,   -- 关联本身也是�
 
 ## 5. 同步协议
 
-**数据以本地为准**：所有操作先写本机（浏览器本地存储），不登录也能完整使用；登录后，按便利贴逐条与服务端比较，**哪边新就以哪边为准**。M2 先同步便利贴，看板、待办、标签沿用同一套规则。
+**数据以本地为准**：所有操作先写本机（浏览器本地存储），不登录也能完整使用；登录后，按记录逐条与服务端比较，**哪边新就以哪边为准**。目前同步便利贴（M2 起）和看板（M4 起），两者用同一套规则（`packages/core/src/sync/merge.ts` 里是同一组泛型函数）；待办和标签存在便利贴里，随便利贴同步。
 
 ### 5.1 每条记录的同步信息
 
@@ -186,12 +193,18 @@ item_tags    (id, user_id, tag_id, item_type, item_id,   -- 关联本身也是�
 
 ```
 GET  /api/v1/sync/pull?since=<version>&limit=<n>
-  ← { notes: [...version > since 的便利贴，含已删除的...], server_version, has_more }
+  ← { notes: [...version > since 的便利贴，含已删除的...],
+      boards: [...同一版本区间内变化的看板...], server_version, has_more }
 
 POST /api/v1/sync/push
-  { notes: [{ id, base_version, updated_at, deleted, data? }] }    data 是整条便利贴（删除时省略）
-  ← { results: [{ id, status: "applied" | "stale" | "invalid", note? }], server_version }
+  { notes: [{ id, base_version, updated_at, deleted, data? }],      data 是整条记录（删除时省略）
+    boards?: [{ id, base_version, updated_at, deleted, data? }] }
+  ← { results: [{ id, status: "applied" | "stale" | "invalid", note? }],
+      board_results: [{ id, status, board? }], server_version }
 ```
+
+- 便利贴按 `limit` 分页；看板很少，每页带上 `(since, server_version]` 区间内的全部看板。
+- 推送时看板先于便利贴处理（客户端也先推看板），同一批里新建的看板可以直接被便利贴引用。
 
 - `applied`：客户端新，已写入；`note` 是写入后的服务端记录（含新 `version`）。
 - `stale`：服务端新，未写入；`note` 是服务端当前记录，客户端直接采用。
@@ -211,7 +224,7 @@ POST /api/v1/sync/push
 - 本地数据按账号分开存：未登录时用“本机”这一份，登录后用该账号的一份。
 - **第一次登录时，本机（未登录时）的便利贴并入账号**，随后上传。
 - 退出登录后回到“本机”那一份；账号的数据仍缓存在本机，下次登录立即出现，再与服务端同步。共用电脑时，退出后别人看不到你的便利贴。
-- **存储**：IndexedDB（Dexie，库名 `stickydo`），表 `notes` / `tombstones` 以 `[owner+id]` 为主键，`meta` 记录每个归属的同步游标；每次保存只写变化的行。浏览器不允许使用 IndexedDB 时（例如部分隐私模式）退回 localStorage，规则不变。
+- **存储**：IndexedDB（Dexie，库名 `stickydo`），表 `notes` / `tombstones` / `boards` / `boardTombstones`（M4 加的看板，Dexie 版本 2）以 `[owner+id]` 为主键，`meta` 记录每个归属的同步游标；每次保存只写变化的行。浏览器不允许使用 IndexedDB 时（例如部分隐私模式）退回 localStorage，规则不变。
   - 读取是异步的：读完之前白板不显示便利贴，也不显示空状态，避免闪烁；首批便利贴不播放入场动画。
   - 多个标签页（以及插件的浮窗和独立窗口）通过 BroadcastChannel 互相通知：收到通知时先等本页的保存完成，再重新读取。因为按行写入，两个页面同时改不同的便利贴不会互相覆盖。
   - 第一次打开时，自动把 localStorage 里的旧数据（M2 的各归属数据、M0/M1 的 Markdown 便利贴）迁移进来，确认写入成功后删除旧数据。

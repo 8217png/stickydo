@@ -207,7 +207,7 @@ paths:
     get:
       tags: [sync]
       operationId: syncPull
-      summary: 拉取自 since 以来服务端变化的便利贴（含已删除的）
+      summary: 拉取自 since 以来服务端变化的便利贴和看板（含已删除的）
       parameters:
         - name: since
           in: query
@@ -241,10 +241,11 @@ paths:
     post:
       tags: [sync]
       operationId: syncPush
-      summary: 上传本地改过的便利贴，逐条比较新旧
+      summary: 上传本地改过的便利贴和看板，逐条比较新旧
       description: |
         对每条改动：服务端自客户端上次同步后没变（base_version 相同），或客户端的
         updated_at 更晚，则写入（applied）；否则服务端更新（stale），返回服务端当前记录。
+        看板先于便利贴处理，同一批里新建的看板可以直接被便利贴引用。
       requestBody:
         required: true
         content:
@@ -507,6 +508,11 @@ components:
           type: boolean
         archived:
           type: boolean
+        board_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 所在看板；为空或看板不存在时在收件箱
 
     Note:
       type: object
@@ -550,14 +556,73 @@ components:
         data:
           $ref: '#/components/schemas/NoteData'
 
+    BoardData:
+      type: object
+      description: 看板（整条，不是补丁）
+      required: [name, color, sort_order]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        color:
+          $ref: '#/components/schemas/NoteColor'
+        sort_order:
+          type: string
+          maxLength: 64
+          description: 分数索引，按字节序排序
+
+    Board:
+      type: object
+      required: [id, version, updated_at, data]
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+        data:
+          $ref: '#/components/schemas/BoardData'
+
+    BoardChange:
+      type: object
+      required: [id, base_version, updated_at, deleted]
+      properties:
+        id:
+          type: string
+          format: uuid
+        base_version:
+          type: integer
+          format: int64
+          minimum: 0
+        updated_at:
+          type: string
+          format: date-time
+        deleted:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/BoardData'
+
     SyncPullResponse:
       type: object
-      required: [notes, server_version, has_more]
+      required: [notes, boards, server_version, has_more]
       properties:
         notes:
           type: array
           items:
             $ref: '#/components/schemas/Note'
+        boards:
+          type: array
+          items:
+            $ref: '#/components/schemas/Board'
         server_version:
           type: integer
           format: int64
@@ -575,6 +640,11 @@ components:
           maxItems: 500
           items:
             $ref: '#/components/schemas/NoteChange'
+        boards:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/BoardChange'
 
     SyncPushResult:
       type: object
@@ -592,14 +662,33 @@ components:
         reason:
           type: string
 
+    BoardPushResult:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [applied, stale, invalid]
+        board:
+          $ref: '#/components/schemas/Board'
+        reason:
+          type: string
+
     SyncPushResponse:
       type: object
-      required: [results, server_version]
+      required: [results, board_results, server_version]
       properties:
         results:
           type: array
           items:
             $ref: '#/components/schemas/SyncPushResult'
+        board_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardPushResult'
         server_version:
           type: integer
           format: int64

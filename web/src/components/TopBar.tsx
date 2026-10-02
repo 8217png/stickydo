@@ -6,6 +6,8 @@ import { openStandaloneWindow } from '../extension/standaloneWindow'
 import { isExtension, surface } from '../extension/surface'
 import { AccountMenu } from './AccountMenu'
 import { openCapture, openPalette } from '../features/capture/state'
+import { toggleSidebar, useView } from '../features/view'
+import { noteColorVar } from '../design/colors'
 
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' }
 const THEME_LABEL: Record<ThemePref, string> = { system: '跟随系统', light: '浅色', dark: '暗色' }
@@ -15,16 +17,32 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
   const canUndo = useNotes((s) => s.past.length > 0)
   const canRedo = useNotes((s) => s.future.length > 0)
   const { undo, redo } = useNotes.getState()
+  const view = useView((s) => s.view)
+  const sidebarOpen = useView((s) => s.sidebarOpen)
+  const onBoard = view.kind === 'board'
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-[9000] flex items-center justify-between p-3">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-ui border border-chrome-border bg-chrome px-3 py-1.5 shadow-chrome backdrop-blur-md">
-        <Logo />
-        <span className={`text-[14px] font-semibold tracking-tight max-sm:hidden ${isExtension ? 'hidden' : ''}`}>Sticky-Do</span>
-        <span className={`ml-1 rounded-full max-sm:hidden bg-chrome-hover px-1.5 py-px text-[10px] font-medium text-ink-faint ${isExtension ? 'hidden' : ''}`}>M3</span>
+      <div
+        className={`pointer-events-auto flex min-w-0 items-center gap-1 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md ${!onBoard && sidebarOpen ? 'invisible' : ''}`}
+      >
+        {!sidebarOpen && (
+          <IconButton title="侧边栏（[）" onClick={() => toggleSidebar(true)}>
+            <SidebarIconPaths />
+          </IconButton>
+        )}
+        {/* 白板视图显示当前看板的名字；待办列表自己有大标题 */}
+        {onBoard && <BoardTitle boardId={view.boardId} />}
+        {!onBoard && !sidebarOpen && (
+          <span className="flex items-center gap-2 pr-2 pl-1">
+            <Logo />
+            <span className={`text-[14px] font-semibold tracking-tight max-sm:hidden ${isExtension ? 'hidden' : ''}`}>Sticky-Do</span>
+          </span>
+        )}
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
+        {onBoard && (<>
         <div className="flex items-center gap-0.5" role="group" aria-label="统一大小并自动排列">
           <svg className="mx-1 text-ink-faint max-sm:hidden" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
             <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" />
@@ -53,6 +71,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
           })}
         </div>
         <span className="mx-1 h-4 w-px bg-chrome-border max-[420px]:hidden" />
+        </>)}
         <IconButton title="快速记录（Q）" onClick={() => openCapture()}>
           <path d="M8 3v10M3 8h10" />
         </IconButton>
@@ -114,7 +133,26 @@ function IconButton(props: {
   )
 }
 
-function Logo() {
+/** 白板视图左上角：当前看板的名字（收件箱没有颜色点） */
+function BoardTitle({ boardId }: { boardId: string | null }) {
+  const board = useNotes((s) => (boardId ? s.boards.find((b) => b.id === boardId) : undefined))
+  return (
+    <span className="flex min-w-0 items-center gap-2 px-2 text-[14px] font-semibold tracking-tight text-ink max-[420px]:hidden">
+      {board && <span className="size-2.5 shrink-0 rounded-full border border-black/10" style={{ background: noteColorVar(board.color) }} />}
+      <span className="max-w-[16em] truncate">{board?.name ?? '收件箱'}</span>
+    </span>
+  )
+}
+
+/** IconButton 里用的侧边栏图标（只要路径） */
+const SidebarIconPaths = () => (
+  <>
+    <rect x="2" y="3" width="12" height="10" rx="2" />
+    <path d="M6 3v10" />
+  </>
+)
+
+export function Logo() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
       <rect x="2" y="3" width="13" height="13" rx="2" transform="rotate(-6 9 9)" fill="var(--note-lemon)" stroke="var(--chrome-border)" />
