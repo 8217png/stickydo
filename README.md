@@ -2,13 +2,15 @@
 
 便利贴 + 待办事项应用。第一期为 Go 服务端 + React Web 前端，后期支持 Android 与 iOS。
 
-> 当前进度：Web 版 M1–M5（编辑器、本地优先 + 多端同步、快速记录、待办视图、看板、实时更新、回收站）与 Chrome 插件登录同步（E2）已完成，设计文档见 [docs/](docs/README.md)。
+> 当前进度：Web 版 M1–M5（编辑器、本地优先 + 多端同步、快速记录、待办视图、看板、实时更新、回收站）与 Chrome 插件登录同步（E2）已完成；之后又加入了无边界画布、缩放、Markdown 表格和“重新排列”。设计文档见 [docs/](docs/README.md)。
 
 ## 演示
 
-[![Sticky-Do 演示：便利贴、快速记录、看板、待办视图、命令面板、暗色模式、多端实时同步](docs/media/stickydo-demo.gif)](docs/media/stickydo-demo.mp4)
+[![Sticky-Do 演示：便利贴、Markdown 表格、快速记录、待办视图、无边界画布、缩放、重新排列、看板、命令面板、暗色模式、多端实时同步](docs/media/stickydo-demo.gif)](docs/media/stickydo-demo.mp4)
 
-约 1 分半：双击贴便利贴、拖动换色、Markdown 待办 → 按 Q 快速记录（自动识别时间、优先级、标签）→ 看板 → 今天 / 即将 → Ctrl+K 命令面板 → 白板 / 列表 → 暗色模式 → 两台设备实时同步。点图片可看清晰版 [MP4](docs/media/stickydo-demo.mp4)。
+约 2 分钟：双击贴便利贴、拖动换色 → Markdown 表格（输入 `| 表头 |` 回车，工具栏增删行列）→ 按 Q 快速记录（自动识别时间、优先级、标签）→ 今天 / 即将 → 无边界画布（按住空白处拖动）→ Ctrl + 滚轮缩放、一键显示全部 → 单独调整大小、一键重新排列（大小不变，先确认）→ 看板 → Ctrl+K 命令面板 → 暗色模式 → 两台设备实时同步。
+
+上面的动图没有声音；点图片或这里看带背景音乐的完整版 [MP4](docs/media/stickydo-demo.mp4)（1280×800，配乐为程序合成的原创音乐）。
 
 ## 本地开发
 
