@@ -14,6 +14,7 @@ import { TrashView } from '../features/trash/TrashView'
 import { toggleSidebar, useBoardLayout, useView } from '../features/view'
 import { NoteList } from '../features/notes/NoteList'
 import { LayoutToggle } from '../components/LayoutToggle'
+import { ZoomControl } from '../components/ZoomControl'
 import { useNotes } from '../features/notes/store'
 import { loadNoteEditor } from '../features/notes/StickyNote'
 
@@ -74,7 +75,12 @@ export function BoardPage() {
         ) : (
           <Whiteboard boardId={boardId} />
         )}
-        {view.kind === 'board' && <LayoutToggle />}
+        {view.kind === 'board' && (
+          <div className="pointer-events-none absolute right-3 bottom-3 z-[9000] flex items-center gap-2">
+            {layout === 'board' && <ZoomControl />}
+            <LayoutToggle />
+          </div>
+        )}
       </main>
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
       <LoadBoundary>

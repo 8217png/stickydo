@@ -6,6 +6,8 @@ export interface Viewport {
   top: number
   width: number
   height: number
+  /** 缩放比例；left / top / width / height 都是画布坐标（已经除过比例） */
+  zoom: number
   /** 鼠标在画布上的位置（不在画布上时为 null） */
   pointer: { x: number; y: number } | null
   scrollTo: (left: number, top: number) => void
@@ -30,7 +32,7 @@ export function nextNotePosition(opts: { preferCenter?: boolean } = {}) {
   const jitter = () => Math.round(Math.random() * 40 - 20)
   if (!v) {
     // 不在白板上（例如在待办列表里记录）：按窗口大小找一个空位
-    const slot = opts.preferCenter && freeSlot({ left: 0, top: 56, width: window.innerWidth, height: window.innerHeight - 56, pointer: null, scrollTo: () => {} }, size)
+    const slot = opts.preferCenter && freeSlot({ left: 0, top: 56, width: window.innerWidth, height: window.innerHeight - 56, zoom: 1, pointer: null, scrollTo: () => {} }, size)
     return slot || { x: 120 + jitter(), y: 120 + jitter() }
   }
   if (opts.preferCenter) {
@@ -89,7 +91,9 @@ export function scrollNoteIntoView(id: string) {
     if (start + size + after > viewStart + viewSize) return start + size + after - viewSize
     return viewStart
   }
-  const left = nearest(n.x, n.w, v.left, v.width, GRID.side, GRID.side)
-  const top = nearest(n.y, n.h, v.top, v.height, GRID.top, GRID.bottom)
+  // 留白是屏幕上的像素，换算成画布坐标
+  const m = (px: number) => px / v.zoom
+  const left = nearest(n.x, n.w, v.left, v.width, m(GRID.side), m(GRID.side))
+  const top = nearest(n.y, n.h, v.top, v.height, m(GRID.top), m(GRID.bottom))
   if (left !== v.left || top !== v.top) v.scrollTo(left, top)
 }
