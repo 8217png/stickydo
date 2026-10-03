@@ -1,12 +1,12 @@
 import { useEffect } from 'react'
 import { NOTE_COLORS } from '../../design/colors'
-import { deleteWithUndo, stepNoteSize } from './actions'
+import { deleteWithUndo } from './actions'
 import { readingOrder } from './layout'
 import { docFromText, hasMarkdownTable, loadMarkdown } from './doc'
 import { useNotes, visibleNotes } from './store'
 import { nextNotePosition, scrollNoteIntoView } from './viewport'
 import { closePalette, openCapture, openPalette, useCommandUI } from '../capture/state'
-import { toggleBoardLayout, toggleSidebar, useBoardLayout, useView } from '../view'
+import { toggleBoardLayout, toggleSidebar, useView } from '../view'
 
 /** 焦点在输入框/编辑器里，或输入法正在组字时，单键快捷键不生效（docs/frontend-design.md §2.4） */
 function isTyping(e: KeyboardEvent) {
@@ -92,12 +92,6 @@ export function useBoardShortcuts(opts: { toggleHelp: () => void; closeOverlays:
         return
       }
 
-      if ((key === '-' || key === '=' || key === '+') && useBoardLayout.getState().layout === 'board') {
-        // 全局：统一所有便利贴的大小并自动排列
-        e.preventDefault()
-        stepNoteSize(key === '-' ? -1 : 1)
-        return
-      }
 
       const nav = { j: 1, ArrowDown: 1, ArrowRight: 1, k: -1, ArrowUp: -1, ArrowLeft: -1 }[key]
       if (nav) {

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { type ThemePref, useSettings } from '../features/settings'
-import { NOTE_SIZES, useNotes } from '../features/notes/store'
-import { applyNoteSize } from '../features/notes/actions'
+import { useNotes } from '../features/notes/store'
+import { ArrangeButton } from './ArrangeButton'
 import { openStandaloneWindow } from '../extension/standaloneWindow'
 import { isExtension, surface } from '../extension/surface'
 import { AccountMenu } from './AccountMenu'
@@ -13,14 +13,14 @@ const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark
 const THEME_LABEL: Record<ThemePref, string> = { system: '跟随系统', light: '浅色', dark: '暗色' }
 
 export function TopBar({ onHelp }: { onHelp: () => void }) {
-  const { theme, setTheme, tilt, setTilt, noteSize } = useSettings()
+  const { theme, setTheme, tilt, setTilt } = useSettings()
   const canUndo = useNotes((s) => s.past.length > 0)
   const canRedo = useNotes((s) => s.future.length > 0)
   const { undo, redo } = useNotes.getState()
   const view = useView((s) => s.view)
   const sidebarOpen = useView((s) => s.sidebarOpen)
   const onBoard = view.kind === 'board'
-  // 统一大小只对白板有意义
+  // 重新排列只对白板有意义
   const layout = useBoardLayout((s) => s.layout)
   const freeform = onBoard && layout === 'board'
 
@@ -45,36 +45,12 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
       </div>
 
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md">
-        {freeform && (<>
-        <div className="flex items-center gap-0.5" role="group" aria-label="统一大小并自动排列">
-          <svg className="mx-1 text-ink-faint max-sm:hidden" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
-            <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" />
-          </svg>
-          {NOTE_SIZES.map((p) => {
-            const active = p.key === noteSize
-            return (
-              <button
-                key={p.key}
-                type="button"
-                title={active ? `重新排列（快捷键 - / =）` : `全部统一为「${p.label}」并自动排列（快捷键 - / =）`}
-                aria-label={`全部统一为${p.label}号并自动排列`}
-                aria-pressed={active}
-                onClick={(e) => {
-                  // 鼠标点击后不保留焦点，免得之后按 - / = 时焦点环停在旧档位上
-                  if (e.detail > 0) e.currentTarget.blur()
-                  applyNoteSize(p.key)
-                }}
-                className={`grid h-8 min-w-8 place-items-center rounded-lg px-1.5 text-[13px] transition-colors hover:bg-chrome-hover ${
-                  active ? 'bg-chrome-hover font-semibold text-ink' : 'text-ink-muted'
-                }`}
-              >
-                {p.label}
-              </button>
-            )
-          })}
-        </div>
-        <span className="mx-1 h-4 w-px bg-chrome-border max-[420px]:hidden" />
-        </>)}
+        {freeform && (
+          <>
+            <ArrangeButton />
+            <span className="mx-1 h-4 w-px bg-chrome-border max-[420px]:hidden" />
+          </>
+        )}
         <IconButton title="快速记录（Q）" onClick={() => openCapture()}>
           <path d="M8 3v10M3 8h10" />
         </IconButton>

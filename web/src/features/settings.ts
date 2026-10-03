@@ -7,7 +7,7 @@ export type NoteSizeKey = 's' | 'm' | 'l'
 interface SettingsState {
   theme: ThemePref
   tilt: boolean
-  /** 全局便利贴尺寸档位：新建便利贴用它，切换时统一所有便利贴并自动排列 */
+  /** 新建便利贴的默认尺寸档位（界面上不再提供切换，保留以前设置过的值） */
   noteSize: NoteSizeKey
   setTheme: (t: ThemePref) => void
   setTilt: (on: boolean) => void

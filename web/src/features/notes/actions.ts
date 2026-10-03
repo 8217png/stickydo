@@ -1,7 +1,6 @@
 import { toast } from 'sonner'
-import { type NoteSizeKey, useSettings } from '../settings'
-import { gridLayout } from './layout'
-import { NOTE_SIZES, noteTitle, sizeOf, type Snapshot, useNotes, visibleNotes } from './store'
+import { flowLayout } from './layout'
+import { noteTitle, type Snapshot, useNotes, visibleNotes } from './store'
 import { boardViewport } from './viewport'
 
 /** 零确认删除：立即生效，底部提示条提供撤销（docs/frontend-design.md §2.3） */
@@ -19,29 +18,25 @@ export function deleteWithUndo(id: string, snapshot?: Snapshot) {
 
 
 /**
- * 全局调整大小：把当前白板上的所有便利贴统一成某一档尺寸，再按阅读顺序自动排成网格。
- * 整体算一步撤销；提示条上的“撤销”精确恢复排列前每张便利贴的位置和大小。
+ * 重新排列当前白板：大小不变，按阅读顺序排成一行行（见 layout.ts flowLayout），画布回到原点。
+ * 整体算一步撤销；提示条上的“撤销”精确恢复排列前每张便利贴的位置。调用前由界面二次确认（ArrangeButton）
  */
-export function applyNoteSize(key: NoteSizeKey) {
-  useSettings.getState().setNoteSize(key)
+export function arrangeNotes() {
   const s = useNotes.getState()
   const notes = visibleNotes()
   if (notes.length === 0) return
-
-  const size = sizeOf(key)
   const v = boardViewport()
-  const positions = gridLayout(notes, size, v?.width ?? window.innerWidth)
-  const before = new Map(notes.map((n) => [n.id, { x: n.x, y: n.y, w: n.w, h: n.h }]))
-  const patches = new Map([...positions].map(([id, p]) => [id, { ...p, w: size.w, h: size.h }]))
+  const positions = flowLayout(notes, v?.width ?? window.innerWidth)
+  const before = new Map(notes.map((n) => [n.id, { x: n.x, y: n.y }]))
   const changed = notes.some((n) => {
-    const p = patches.get(n.id)!
-    return p.x !== n.x || p.y !== n.y || p.w !== n.w || p.h !== n.h
+    const p = positions.get(n.id)!
+    return p.x !== n.x || p.y !== n.y
   })
   v?.scrollTo(0, 0)
   if (!changed) return
-  s.patchMany(patches)
+  s.patchMany(positions)
 
-  toast(`已统一为「${size.label}」并排列 ${notes.length} 张便利贴`, {
+  toast(`已重新排列 ${notes.length} 张便利贴`, {
     id: 'arrange',
     action: {
       label: '撤销',
@@ -51,11 +46,4 @@ export function applyNoteSize(key: NoteSizeKey) {
       },
     },
   })
-}
-
-/** 全局尺寸放大 / 缩小一档（快捷键 = / -） */
-export function stepNoteSize(dir: 1 | -1) {
-  const i = NOTE_SIZES.findIndex((p) => p.key === useSettings.getState().noteSize)
-  const next = NOTE_SIZES[i + dir]
-  if (next) applyNoteSize(next.key)
 }

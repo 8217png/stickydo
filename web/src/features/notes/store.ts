@@ -96,7 +96,7 @@ function baseSampleNotes() {
     {
       ...base,
       id: uuidv7(),
-      content: '整理一下\n右上角的“小 中 大”会统一所有便利贴的大小并自动排整齐（快捷键 - / =）。选中后按 1–8 换色，Delete 删除，Ctrl+Z 撤销。',
+      content: '整理一下\n右上角的“重新排列”会把便利贴按顺序排整齐，大小不变。选中后按 1–8 换色，Delete 删除，Ctrl+Z 撤销。',
       color: 'blossom' as const,
       x: 260,
       y: 400,

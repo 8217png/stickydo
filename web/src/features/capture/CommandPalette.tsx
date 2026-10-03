@@ -5,12 +5,12 @@ import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { parseCapture } from '@stickydo/core/capture/parse'
 import { docText } from '../notes/doc'
-import { NOTE_SIZES, noteBoardId, noteTitle, sortedBoards, useNotes } from '../notes/store'
+import { noteBoardId, noteTitle, sortedBoards, useNotes } from '../notes/store'
 import { collectTags, collectTodos } from '@stickydo/core/capture'
 import { noteColorVar } from '../../design/colors'
 import { boardName, createBoardAndOpen, moveNoteWithUndo, openNote } from '../boards/actions'
 import { setBoardLayout, setView, toggleSidebar, useBoardLayout, useView } from '../view'
-import { applyNoteSize } from '../notes/actions'
+import { openArrangeConfirm } from '../../components/ArrangeButton'
 import { nextNotePosition } from '../notes/viewport'
 import { useSettings } from '../settings'
 import { useSession } from '../auth/session'
@@ -210,11 +210,11 @@ function Palette({ onHelp }: { onHelp: () => void }) {
                   切换为白板视图
                 </Item>
               )}
-              {layout === 'board' && NOTE_SIZES.map((s) => (
-                <Item key={s.key} value={`统一大小 ${s.label} 自动排列 size ${s.key}`} onSelect={run(() => applyNoteSize(s.key))} shortcut={s.key === 's' ? '-' : s.key === 'l' ? '=' : undefined} icon={<GridIcon />}>
-                  全部统一为「{s.label}」并自动排列
+              {layout === 'board' && (
+                <Item value="重新排列便利贴 自动排列 整理 arrange" onSelect={run(openArrangeConfirm)} icon={<GridIcon />}>
+                  重新排列便利贴…
                 </Item>
-              ))}
+              )}
             </Command.Group>
             )}
 
