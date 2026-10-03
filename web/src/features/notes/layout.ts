@@ -24,3 +24,35 @@ export function gridLayout(notes: Note[], size: { w: number; h: number }, viewpo
   })
   return out
 }
+
+/**
+ * 重新排列（不改大小）：按阅读顺序从左到右摆，一行放不下就换行；每行的高度取这一行最高的那张，
+ * 整体在可见宽度内水平居中。便利贴大小各不相同也排得整齐，返回每张的新位置。
+ */
+export function flowLayout(notes: Note[], viewportWidth: number) {
+  const ordered = readingOrder(notes)
+  const widest = Math.max(0, ...ordered.map((n) => n.w))
+  const usable = Math.max(widest, viewportWidth - GRID.side * 2)
+  const rows: { items: Note[]; width: number; height: number }[] = []
+  for (const n of ordered) {
+    const row = rows.at(-1)
+    if (row && row.width + GRID.gap + n.w <= usable) {
+      row.items.push(n)
+      row.width += GRID.gap + n.w
+      row.height = Math.max(row.height, n.h)
+    } else rows.push({ items: [n], width: n.w, height: n.h })
+  }
+  const blockWidth = Math.max(0, ...rows.map((r) => r.width))
+  const left = Math.max(GRID.side, Math.round((viewportWidth - blockWidth) / 2))
+  const out = new Map<string, { x: number; y: number }>()
+  let y = GRID.top
+  for (const row of rows) {
+    let x = left
+    for (const n of row.items) {
+      out.set(n.id, { x, y })
+      x += n.w + GRID.gap
+    }
+    y += row.height + GRID.gap
+  }
+  return out
+}
