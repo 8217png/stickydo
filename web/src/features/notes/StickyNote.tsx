@@ -10,6 +10,7 @@ import { boardOfNote, moveNoteWithUndo } from '../boards/actions'
 import { cleanDoc, docIsEmpty, type NoteDoc, trimDoc } from './doc'
 import { NoteRenderer, toggleTaskAt } from './NoteRenderer'
 import { useLongPress } from './useLongPress'
+import { canvasZoom } from './zoom'
 
 /** 编辑器（Tiptap）单独打包，第一次编辑前加载；加载完之前显示原来的内容，看不出切换 */
 export const loadNoteEditor = () => import('./NoteEditor')
@@ -89,6 +90,19 @@ const useNoteState = (id: string) => ({
 export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
   const { selected, editing } = useNoteState(note.id)
   const tiltOn = useSettings((s) => s.tilt)
+  // 白板缩放后，拖动 / 调整大小时把鼠标移动的距离换算回画布坐标。不订阅比例（缩放时所有便利贴都要重新渲染），
+  // 挂载时和按下这张便利贴时读画布此刻实际的比例：react-rnd 挂载、开始调整大小时按这个比例算便利贴相对画布的偏移，
+  // 比例和画布不一致，便利贴就会画歪。按下是离散事件，状态当场生效，拖动的第一次移动就用上
+  const [scale, setScale] = useState(canvasZoom)
+  const rndRef = useRef<Rnd>(null)
+  useEffect(() => {
+    // react-rnd 不把 onPointerDownCapture 传给它的元素，直接监听；按下发生在拖动、调整大小开始（mousedown）之前
+    const el = rndRef.current?.getSelfElement()
+    if (!el) return
+    const onDown = () => setScale(canvasZoom())
+    el.addEventListener('pointerdown', onDown, true)
+    return () => el.removeEventListener('pointerdown', onDown, true)
+  }, [])
   const { update, bringToFront, select, setEditing } = useNotes.getState()
   const [lifted, setLifted] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -103,12 +117,14 @@ export const StickyNote = memo(function StickyNote({ note, morph }: Props) {
 
   return (
     <Rnd
+      ref={rndRef}
       className="note-shell"
       data-note={note.id}
       data-selected={selected}
       data-editing={editing}
       position={{ x: note.x, y: note.y }}
       size={{ width: note.w, height: note.h }}
+      scale={scale}
       style={{
         zIndex: note.z,
         transition: interacting

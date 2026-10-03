@@ -28,7 +28,7 @@ export function LayoutToggle() {
     <div
       role="radiogroup"
       aria-label="显示方式"
-      className="pointer-events-auto absolute right-3 bottom-3 z-[9000] flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md"
+      className="pointer-events-auto flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md"
     >
       {option('board', '白板', <><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="4" width="5" height="5" rx="1" /><rect x="3" y="9" width="5" height="5" rx="1" /></>)}
       {option('list', '列表', <path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" />)}
