@@ -7,7 +7,7 @@ const MOD = mac ? '⌘' : 'Ctrl'
 const PRESETS = [0.5, 1, 1.5, 2]
 
 /**
- * 右下角的缩放控件（白板视图）：缩小 / 当前比例 / 放大。点比例弹出菜单：显示全部便利贴、常用比例。
+ * 右下角的缩放控件（白板视图）：显示全部便利贴 / 缩小 / 当前比例 / 放大。点比例弹出菜单：显示全部便利贴、常用比例。
  * 快捷键 Ctrl / ⌘ + = / - / 0、Shift + 1；Ctrl / ⌘ + 滚轮、触控板和触屏双指也能缩放（见 Whiteboard）
  */
 export function ZoomControl() {
@@ -42,6 +42,24 @@ export function ZoomControl() {
       aria-label="缩放"
       className="pointer-events-auto relative flex items-center gap-0.5 rounded-ui border border-chrome-border bg-chrome p-1 shadow-chrome backdrop-blur-md"
     >
+      <button
+        type="button"
+        title="显示全部便利贴（Shift 1）"
+        aria-label="显示全部便利贴"
+        className={iconButton}
+        onClick={(e) => {
+          blurAfter(e)
+          zoomControls()?.fit()
+        }}
+      >
+        {/* 四个角框住几张便利贴 */}
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M2 5.5V3a1 1 0 0 1 1-1h2.5M10.5 2H13a1 1 0 0 1 1 1v2.5M14 10.5V13a1 1 0 0 1-1 1h-2.5M5.5 14H3a1 1 0 0 1-1-1v-2.5" />
+          <rect x="5" y="5" width="3" height="3" rx=".5" />
+          <rect x="8.5" y="8" width="2.5" height="3" rx=".5" />
+        </svg>
+      </button>
+      <span className="mx-0.5 h-4 w-px bg-chrome-border" aria-hidden />
       <button
         type="button"
         title={`缩小（${MOD} -）`}
